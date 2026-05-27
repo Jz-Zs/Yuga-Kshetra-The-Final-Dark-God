@@ -1,0 +1,24 @@
+# Linux
+build/
+
+# Windows
+*.dll
+*.exe
+*.filters
+*.user
+*.vs
+.vscode
+Debug/
+Release/
+
+# Misc
+*.zip
+*.temp
+*.srctrlprj
+*.srctrldb
+*.srctrlbm
+
+# Vcpkg
+vcpkg_installed/
+
+minecraft-one-week-challenge/

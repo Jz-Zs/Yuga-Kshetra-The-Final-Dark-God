@@ -1,0 +1,11 @@
+{
+  "dependencies": [
+    "glm",
+    {
+      "name": "sfml",
+      "version>=": "3.0.0"
+    },
+    "imgui",
+    "imgui-sfml"
+  ]
+}
