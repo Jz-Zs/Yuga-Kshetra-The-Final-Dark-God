@@ -80,7 +80,7 @@ if(MSVC)
     set(CMAKE_CXX_FLAGS_RELEASE "/O2")
     set(CMAKE_CXX_FLAGS_RELEASE "/Ox")
   	target_compile_definitions(${PROJECT_NAME} PRIVATE _CRT_SECURE_NO_WARNINGS)
-  	target_compile_options(${PROJECT_NAME} PRIVATE /W4)
+  	target_compile_options(${PROJECT_NAME} PRIVATE /W4 /utf-8)
 else()
   	target_compile_options(${PROJECT_NAME} PRIVATE 
 		-Wall -Wextra -pedantic)		

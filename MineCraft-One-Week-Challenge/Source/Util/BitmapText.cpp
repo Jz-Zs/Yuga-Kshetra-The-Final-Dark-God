@@ -1,230 +1,182 @@
+#define STB_TRUETYPE_IMPLEMENTATION
+#include "stb_truetype.h"
 #include "BitmapText.h"
-#include <cstring>
 
-// Minimal 5x7 bitmap font in 8x8 cells, ASCII 32-126.
-// Each row is 8 bits (MSB = leftmost pixel), 8 rows per character.
-const unsigned char BitmapText::s_font[95][8] = {
-    // SPACE (32)
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00},
-    // ! (33)
-    {0x18,0x18,0x18,0x18,0x18,0x00,0x18,0x00},
-    // " (34)
-    {0x6C,0x6C,0x6C,0x00,0x00,0x00,0x00,0x00},
-    // # (35)
-    {0x6C,0x6C,0xFE,0x6C,0xFE,0x6C,0x6C,0x00},
-    // $ unused
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00},
-    // % unused
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00},
-    // & unused
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00},
-    // ' (39)
-    {0x18,0x18,0x18,0x00,0x00,0x00,0x00,0x00},
-    // ( (40)
-    {0x0C,0x18,0x30,0x30,0x30,0x18,0x0C,0x00},
-    // ) (41)
-    {0x30,0x18,0x0C,0x0C,0x0C,0x18,0x30,0x00},
-    // * (42)
-    {0x00,0x6C,0x38,0xFE,0x38,0x6C,0x00,0x00},
-    // + (43)
-    {0x00,0x18,0x18,0x7E,0x18,0x18,0x00,0x00},
-    // , (44)
-    {0x00,0x00,0x00,0x00,0x00,0x18,0x18,0x30},
-    // - (45)
-    {0x00,0x00,0x00,0x7E,0x00,0x00,0x00,0x00},
-    // . (46)
-    {0x00,0x00,0x00,0x00,0x00,0x18,0x18,0x00},
-    // / (47)
-    {0x06,0x0C,0x18,0x30,0x60,0xC0,0x80,0x00},
-    // 0 (48)
-    {0x3C,0x66,0x6E,0x7E,0x76,0x66,0x3C,0x00},
-    // 1 (49)
-    {0x18,0x38,0x18,0x18,0x18,0x18,0x7E,0x00},
-    // 2 (50)
-    {0x3C,0x66,0x06,0x0C,0x18,0x30,0x7E,0x00},
-    // 3 (51)
-    {0x3C,0x66,0x06,0x1C,0x06,0x66,0x3C,0x00},
-    // 4 (52)
-    {0x0C,0x1C,0x3C,0x6C,0x7E,0x0C,0x0C,0x00},
-    // 5 (53)
-    {0x7E,0x60,0x7C,0x06,0x06,0x66,0x3C,0x00},
-    // 6 (54)
-    {0x3C,0x66,0x60,0x7C,0x66,0x66,0x3C,0x00},
-    // 7 (55)
-    {0x7E,0x06,0x0C,0x18,0x30,0x30,0x30,0x00},
-    // 8 (56)
-    {0x3C,0x66,0x66,0x3C,0x66,0x66,0x3C,0x00},
-    // 9 (57)
-    {0x3C,0x66,0x66,0x3E,0x06,0x66,0x3C,0x00},
-    // : (58)
-    {0x00,0x18,0x18,0x00,0x00,0x18,0x18,0x00},
-    // ; (59)
-    {0x00,0x18,0x18,0x00,0x00,0x18,0x18,0x30},
-    // < unused
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00},
-    // = (61)
-    {0x00,0x00,0x7E,0x00,0x7E,0x00,0x00,0x00},
-    // > unused
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00},
-    // ? unused
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00},
-    // @ unused
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00},
-    // A (65)
-    {0x18,0x3C,0x66,0x66,0x7E,0x66,0x66,0x00},
-    // B (66)
-    {0x7C,0x66,0x66,0x7C,0x66,0x66,0x7C,0x00},
-    // C (67)
-    {0x3C,0x66,0x60,0x60,0x60,0x66,0x3C,0x00},
-    // D (68)
-    {0x78,0x6C,0x66,0x66,0x66,0x6C,0x78,0x00},
-    // E (69)
-    {0x7E,0x60,0x60,0x7C,0x60,0x60,0x7E,0x00},
-    // F (70)
-    {0x7E,0x60,0x60,0x7C,0x60,0x60,0x60,0x00},
-    // G (71)
-    {0x3C,0x66,0x60,0x6E,0x66,0x66,0x3C,0x00},
-    // H (72)
-    {0x66,0x66,0x66,0x7E,0x66,0x66,0x66,0x00},
-    // I (73)
-    {0x7E,0x18,0x18,0x18,0x18,0x18,0x7E,0x00},
-    // J unused
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00},
-    // K (75)
-    {0x66,0x6C,0x78,0x70,0x78,0x6C,0x66,0x00},
-    // L (76)
-    {0x60,0x60,0x60,0x60,0x60,0x60,0x7E,0x00},
-    // M (77)
-    {0xC6,0xEE,0xFE,0xD6,0xC6,0xC6,0xC6,0x00},
-    // N (78)
-    {0x66,0x76,0x7E,0x7E,0x6E,0x66,0x66,0x00},
-    // O (79)
-    {0x3C,0x66,0x66,0x66,0x66,0x66,0x3C,0x00},
-    // P (80)
-    {0x7C,0x66,0x66,0x7C,0x60,0x60,0x60,0x00},
-    // Q unused
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00},
-    // R (82)
-    {0x7C,0x66,0x66,0x7C,0x78,0x6C,0x66,0x00},
-    // S (83)
-    {0x3C,0x66,0x60,0x3C,0x06,0x66,0x3C,0x00},
-    // T (84)
-    {0x7E,0x18,0x18,0x18,0x18,0x18,0x18,0x00},
-    // U (85)
-    {0x66,0x66,0x66,0x66,0x66,0x66,0x3C,0x00},
-    // V unused
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00},
-    // W (87)
-    {0xC6,0xC6,0xC6,0xD6,0xFE,0xEE,0xC6,0x00},
-    // X (88)
-    {0xC6,0x6C,0x38,0x38,0x38,0x6C,0xC6,0x00},
-    // Y (89)
-    {0x66,0x66,0x66,0x3C,0x18,0x18,0x18,0x00},
-    // Z unused
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00},
-    // [ (91)
-    {0x3C,0x30,0x30,0x30,0x30,0x30,0x3C,0x00},
-    // \ unused
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00},
-    // ] (93)
-    {0x3C,0x0C,0x0C,0x0C,0x0C,0x0C,0x3C,0x00},
-    // ^ unused
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00},
-    // _ (95)
-    {0x00,0x00,0x00,0x00,0x00,0x00,0xFE,0x00},
-    // (96) unused - 'a' starts here
-    {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // placeholder for 96
-};
+#include <fstream>
+#include <iostream>
+#include <vector>
 
-// Note: ASCII 32-96 above only goes to index 64. ASCII 97-126 (a-z + more) follow.
-// For simplicity, reuse uppercase glyphs for lowercase.
-static unsigned char lowerFromUpper(char c) {
-    // Map a-z to A-Z font data (indices 65-90 in font array, offset 33 from ASCII)
-    if (c >= 'a' && c <= 'z')
-        return (unsigned char)(c - 'a' + 'A');
-    if (c >= 'A' && c <= 'Z')
-        return (unsigned char)c;
-    return (unsigned char)c;
+// Simple UTF-8 decoder: returns next codepoint and advances pointer
+static int utf8_decode(const char** str)
+{
+    const unsigned char* s = (const unsigned char*)*str;
+    if (s[0] < 0x80) { (*str)++; return s[0]; }
+    if ((s[0] & 0xE0) == 0xC0) { (*str)+=2; return ((s[0]&0x1F)<<6)|(s[1]&0x3F); }
+    if ((s[0] & 0xF0) == 0xE0) { (*str)+=3; return ((s[0]&0x0F)<<12)|((s[1]&0x3F)<<6)|(s[2]&0x3F); }
+    if ((s[0] & 0xF8) == 0xF0) { (*str)+=4; return ((s[0]&0x07)<<18)|((s[1]&0x3F)<<12)|((s[2]&0x3F)<<6)|(s[3]&0x3F); }
+    (*str)++; return '?';
 }
 
-BitmapText::BitmapText() = default;
+// Read entire file into memory
+static std::vector<unsigned char> readFile(const char* path)
+{
+    std::ifstream f(path, std::ios::binary | std::ios::ate);
+    if (!f) return {};
+    auto sz = f.tellg();
+    f.seekg(0);
+    std::vector<unsigned char> data((size_t)sz);
+    f.read((char*)data.data(), sz);
+    return data;
+}
+
+BitmapText::BitmapText()
+{
+    const char* fontPaths[] = {
+        "C:\\Windows\\Fonts\\msyh.ttc",
+        "C:\\Windows\\Fonts\\simhei.ttf",
+        "C:\\Windows\\Fonts\\simsun.ttc",
+        "C:\\Windows\\Fonts\\arial.ttf",
+        nullptr
+    };
+
+    for (int i = 0; fontPaths[i]; i++) {
+        m_ttfData = readFile(fontPaths[i]);
+        if (!m_ttfData.empty()) {
+            m_fontInfo = malloc(sizeof(stbtt_fontinfo));
+            int off = stbtt_GetFontOffsetForIndex(m_ttfData.data(), 0);
+            if (stbtt_InitFont((stbtt_fontinfo*)m_fontInfo, m_ttfData.data(), off)) {
+                std::cout << "[BitmapText] stb_truetype loaded: "
+                          << fontPaths[i] << std::endl;
+                return;
+            }
+            free(m_fontInfo);
+            m_fontInfo = nullptr;
+            m_ttfData.clear();
+        }
+    }
+    std::cout << "[BitmapText] No TTF found, text disabled." << std::endl;
+}
 
 BitmapText::~BitmapText()
 {
-    if (m_texID)
-        glDeleteTextures(1, &m_texID);
+    if (m_texID) glDeleteTextures(1, &m_texID);
+    if (m_fontInfo) free(m_fontInfo);
 }
 
-void BitmapText::drawChar(unsigned char* buf, int bufW, int x, int y, char c)
+int BitmapText::renderUTF8(unsigned char* buf, int bufW, int bufH,
+                            int x, int y, const std::string& text)
 {
-    if (c < 32 || c > 126) return;
-    c = lowerFromUpper(c);
-    int idx = c - 32;
-    if (idx < 0 || idx >= 95) return;
+    auto* fi = (stbtt_fontinfo*)m_fontInfo;
+    if (!fi) return 0;
 
-    const unsigned char* glyph = s_font[idx];
-    for (int row = 0; row < 8; row++) {
-        unsigned char bits = glyph[row];
-        for (int col = 0; col < 8; col++) {
-            if (bits & (1 << (7 - col))) {
-                int px = (y + row) * bufW + (x + col);
-                int off = px * 4;
-                if (off >= 0 && off + 3 < bufW * m_texH * 4) {
-                    buf[off + 0] = 255;
-                    buf[off + 1] = 255;
-                    buf[off + 2] = 255;
-                    buf[off + 3] = 255;
+    float scale = stbtt_ScaleForPixelHeight(fi, m_fontSize);
+    int ascent, descent, lineGap;
+    stbtt_GetFontVMetrics(fi, &ascent, &descent, &lineGap);
+    int baseline = (int)(ascent * scale);
+
+    int cx = x;
+    const char* s = text.c_str();
+    int prevCp = 0;
+    while (*s) {
+        int cp = utf8_decode(&s);
+
+        // Kerning from previous character
+        if (prevCp)
+            cx += (int)(scale * stbtt_GetCodepointKernAdvance(fi, prevCp, cp));
+
+        int gw, gh, xoff, yoff;
+        unsigned char* glyph = stbtt_GetCodepointBitmap(
+            fi, scale, scale, cp, &gw, &gh, &xoff, &yoff);
+
+        if (glyph) {
+            int drawX = cx + xoff;
+            int drawY = y + baseline + yoff;
+            for (int row = 0; row < gh; row++) {
+                int py = drawY + row;
+                if (py < 0 || py >= bufH) continue;
+                for (int col = 0; col < gw; col++) {
+                    int px = drawX + col;
+                    if (px < 0 || px >= bufW) continue;
+                    unsigned char alpha = glyph[row * gw + col];
+                    if (alpha == 0) continue;
+                    int off = (py * bufW + px) * 4;
+                    buf[off+0] = 255;
+                    buf[off+1] = 255;
+                    buf[off+2] = 255;
+                    buf[off+3] = (unsigned char)std::min(255, buf[off+3] + alpha);
                 }
             }
+            stbtt_FreeBitmap(glyph, nullptr);
         }
+
+        int adv;
+        stbtt_GetCodepointHMetrics(fi, cp, &adv, nullptr);
+        cx += (int)(adv * scale);
+        prevCp = cp;
     }
+
+    return cx;
 }
 
-void BitmapText::drawString(unsigned char* buf, int bufW, int x, int y,
-                             const std::string& s, int maxWidth)
+int BitmapText::measureTextWidth(const std::string& text)
 {
-    int cx = x;
-    for (char ch : s) {
-        if (cx + 8 > maxWidth) break;
-        drawChar(buf, bufW, cx, y, ch);
-        cx += 8;
+    auto* fi = (stbtt_fontinfo*)m_fontInfo;
+    if (!fi) return (int)text.size() * 8;
+    float scale = stbtt_ScaleForPixelHeight(fi, m_fontSize);
+    int w = 0, prevCp = 0;
+    const char* s = text.c_str();
+    while (*s) {
+        int cp = utf8_decode(&s);
+        if (prevCp)
+            w += (int)(scale * stbtt_GetCodepointKernAdvance(fi, prevCp, cp));
+        int adv;
+        stbtt_GetCodepointHMetrics(fi, cp, &adv, nullptr);
+        w += (int)(adv * scale);
+        prevCp = cp;
     }
+    return w;
 }
 
 GLuint BitmapText::update(const std::vector<std::string>& lines,
-                           int width, int height)
+                           int texWidth, int texHeight)
 {
-    // Allocate or reallocate buffer
-    int bufSize = width * height * 4;
+    if (!m_fontInfo) {
+        // No font: return empty texture
+        if (m_texID == 0) glGenTextures(1, &m_texID);
+        return m_texID;
+    }
+
+    // Allocate buffer
+    int bufSize = texWidth * texHeight * 4;
     if ((int)m_buffer.size() != bufSize)
         m_buffer.assign(bufSize, 0);
     else
         std::memset(m_buffer.data(), 0, bufSize);
 
-    // Draw each line
-    int y = 2;
+    int y = 4;
     for (auto& line : lines) {
-        drawString(m_buffer.data(), width, 4, y, line, width - 4);
-        y += 10; // 8px char + 2px line spacing
+        renderUTF8(m_buffer.data(), texWidth, texHeight, 4, y, line);
+        y += (int)(m_fontSize * 1.1f);
     }
 
-    // Upload to GL texture
+    // Upload
     if (m_texID == 0)
         glGenTextures(1, &m_texID);
     glBindTexture(GL_TEXTURE_2D, m_texID);
-    if (width != m_texW || height != m_texH) {
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0,
-                     GL_RGBA, GL_UNSIGNED_BYTE, m_buffer.data());
-    } else {
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height,
-                        GL_RGBA, GL_UNSIGNED_BYTE, m_buffer.data());
-    }
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    m_texW = width;
-    m_texH = height;
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    if (texWidth != m_texW || texHeight != m_texH) {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, texWidth, texHeight, 0,
+                     GL_RGBA, GL_UNSIGNED_BYTE, m_buffer.data());
+    } else {
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, texWidth, texHeight,
+                        GL_RGBA, GL_UNSIGNED_BYTE, m_buffer.data());
+    }
+    m_texW = texWidth;
+    m_texH = texHeight;
 
     return m_texID;
 }

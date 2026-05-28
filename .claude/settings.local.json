@@ -17,7 +17,8 @@
       "Bash(cmake --build \"D:/Yuga_Kshetra-The_Final_Dark_God/MineCraft-One-Week-Challenge/out/build/x64-Debug\" --config Debug)",
       "Bash(findstr /C:\"FlatPlain\" \"out/build/x64-Debug/Debug/minecraft-one-week-challenge.exe\")",
       "Bash(cmake --build out/build/x64-Debug --config Debug --verbose)",
-      "Bash(cmake --build out/build/x64-Debug --config Debug --clean-first)"
+      "Bash(cmake --build out/build/x64-Debug --config Debug --clean-first)",
+      "Bash(curl -sL \"https://raw.githubusercontent.com/nothings/stb/master/stb_truetype.h\" -o \"D:/Yuga_Kshetra-The_Final_Dark_God/MineCraft-One-Week-Challenge/deps/stb_truetype.h\")"
     ]
   }
 }
