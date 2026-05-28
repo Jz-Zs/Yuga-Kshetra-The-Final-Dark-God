@@ -78,36 +78,22 @@ void World::update(const Camera &camera)
 /// Optimize for chunkPositionU usage :thinking:
 void World::loadChunks(const Camera &camera)
 {
+    // Load all MVP world chunks progressively
     while (m_isRunning) {
-        bool isMeshMade = false;
-        int cameraX = camera.position.x / CHUNK_SIZE;
-        int cameraZ = camera.position.z / CHUNK_SIZE;
-
-        for (int i = 0; i < m_loadDistance; i++) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            int minX = std::max(cameraX - i, 0);
-            int minZ = std::max(cameraZ - i, 0);
-            int maxX = std::min(cameraX + i, MVP_CHUNK_COUNT - 1);
-            int maxZ = std::min(cameraZ + i, MVP_CHUNK_COUNT - 1);
-
-            for (int x = minX; x < maxX; ++x) {
-                for (int z = minZ; z < maxZ; ++z) {
-                    std::unique_lock<std::mutex> lock(m_mainMutex);
-                    isMeshMade = m_chunkManager.makeMesh(x, z, camera);
+        bool allDone = true;
+        for (int x = 0; x < MVP_CHUNK_COUNT; x++) {
+            for (int z = 0; z < MVP_CHUNK_COUNT; z++) {
+                std::unique_lock<std::mutex> lock(m_mainMutex);
+                if (m_chunkManager.makeMesh(x, z, camera)) {
+                    allDone = false;
                 }
-                // if (isMeshMade)
-                //   break;
             }
-
-            if (isMeshMade)
-                break;
         }
-
-        if (!isMeshMade) {
-            m_loadDistance++;
+        if (allDone) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
-        if (m_loadDistance >= m_renderDistance) {
-            m_loadDistance = 2;
+        else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     }
 }

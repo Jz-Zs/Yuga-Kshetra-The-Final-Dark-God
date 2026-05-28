@@ -75,22 +75,29 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
     m_world.update(m_camera);
 
     // Clamp player to MVP world bounds (after physics)
-    if (m_player.position.x < 0)
+    if (m_player.position.x < 0) {
         m_player.position.x = 0;
-    if (m_player.position.x >= MVP_WORLD_SIZE_X - 1)
+        m_player.velocity.x = 0;
+    }
+    if (m_player.position.x >= MVP_WORLD_SIZE_X - 1) {
         m_player.position.x = static_cast<float>(MVP_WORLD_SIZE_X - 1);
-    if (m_player.position.z < 0)
+        m_player.velocity.x = 0;
+    }
+    if (m_player.position.z < 0) {
         m_player.position.z = 0;
-    if (m_player.position.z >= MVP_WORLD_SIZE_Z - 1)
+        m_player.velocity.z = 0;
+    }
+    if (m_player.position.z >= MVP_WORLD_SIZE_Z - 1) {
         m_player.position.z = static_cast<float>(MVP_WORLD_SIZE_Z - 1);
-    if (m_player.position.y < 0)
+        m_player.velocity.z = 0;
+    }
+    if (m_player.position.y < 0) {
         m_player.position.y = 1;
+    }
 }
 
 void Application::on_render(bool show_debug_info)
 {
-    static sf::Clock dt;
-
     m_player.draw(m_masterRenderer);
 
     m_world.renderWorld(m_masterRenderer, m_camera);
