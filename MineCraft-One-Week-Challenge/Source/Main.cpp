@@ -1,7 +1,10 @@
 #include <print>
 
+#include <windows.h>
+
 #include <SFML/Window/VideoMode.hpp>
 #include <SFML/Window/Window.hpp>
+#include <filesystem>
 #include <fstream>
 #include <glad/glad.h>
 #include <iostream>
@@ -27,6 +30,13 @@ namespace
 
 int main()
 {
+    // Set working directory to executable location for relative path resolution
+    {
+        wchar_t exePathW[MAX_PATH];
+        GetModuleFileNameW(nullptr, exePathW, MAX_PATH);
+        std::filesystem::current_path(
+            std::filesystem::path(exePathW).parent_path());
+    }
 
     Config config;
     loadConfig(config);
@@ -75,69 +85,85 @@ int main()
     Profiler profiler;
     bool show_debug_info = false;
 
-    Application app{window, config};
+    bool gui_initialized = false;
+    try {
+        Application app{window, config};
 
-    if (!GUI::init(&window))
-    {
-        std::println(std::cerr, "Failed to initialise Imgui.");
+        if (!GUI::init(&window))
+        {
+            std::println(std::cerr, "Failed to initialise Imgui.");
+            return EXIT_FAILURE;
+        }
+        gui_initialized = true;
+
+        Keyboard keyboard;
+
+        // -------------------
+        // ==== Main Loop ====
+        // -------------------
+        sf::Clock clock;
+        while (window.isOpen())
+        {
+            GUI::begin_frame(window, clock.getElapsedTime());
+            bool close_requested = false;
+            while (auto event = window.pollEvent())
+            {
+                GUI::event(window, *event);
+                keyboard.update(*event);
+                app.on_event(*event);
+                handle_event(*event, window, show_debug_info, close_requested);
+            }
+            auto dt = clock.restart();
+
+            // Update
+            {
+                auto& update_profiler = profiler.begin_section("Update");
+                app.on_update(keyboard, dt);
+                update_profiler.end_section();
+            }
+
+            // Render
+            {
+                auto& render_profiler = profiler.begin_section("Render");
+                app.on_render(show_debug_info);
+                render_profiler.end_section();
+            }
+
+            // Show profiler
+            profiler.end_frame();
+            if (show_debug_info)
+            {
+                profiler.gui();
+            }
+
+            // --------------------------
+            // ==== End Frame ====
+            // --------------------------
+            GUI::render(window);
+            window.display();
+            if (close_requested)
+            {
+                window.close();
+            }
+        }
+
+        // --------------------------
+        // ==== Graceful Cleanup ====
+        // --------------------------
+        GUI::shutdown();
+    } catch (const std::exception &e) {
+        std::cerr << "Fatal error: " << e.what() << std::endl;
+        if (gui_initialized) {
+            GUI::shutdown();
+        }
+        return EXIT_FAILURE;
+    } catch (...) {
+        std::cerr << "Fatal error: unknown exception" << std::endl;
+        if (gui_initialized) {
+            GUI::shutdown();
+        }
         return EXIT_FAILURE;
     }
-
-    Keyboard keyboard;
-
-    // -------------------
-    // ==== Main Loop ====
-    // -------------------
-    sf::Clock clock;
-    while (window.isOpen())
-    {
-        GUI::begin_frame(window, clock.getElapsedTime());
-        bool close_requested = false;
-        while (auto event = window.pollEvent())
-        {
-            GUI::event(window, *event);
-            keyboard.update(*event);
-            app.on_event(*event);
-            handle_event(*event, window, show_debug_info, close_requested);
-        }
-        auto dt = clock.restart();
-
-        // Update
-        {
-            auto& update_profiler = profiler.begin_section("Update");
-            app.on_update(keyboard, dt);
-            update_profiler.end_section();
-        }
-
-        // Render
-        {
-            auto& render_profiler = profiler.begin_section("Render");
-            app.on_render(show_debug_info);
-            render_profiler.end_section();
-        }
-
-        // Show profiler
-        profiler.end_frame();
-        if (show_debug_info)
-        {
-            profiler.gui();
-        }
-
-        // --------------------------
-        // ==== End Frame ====
-        // --------------------------
-        GUI::render(window);
-        window.display();
-        if (close_requested)
-        {
-            window.close();
-        }
-    }
-
-    // --------------------------
-    // ==== Graceful Cleanup ====
-    // --------------------------
-    GUI::shutdown();
 }
 
 namespace

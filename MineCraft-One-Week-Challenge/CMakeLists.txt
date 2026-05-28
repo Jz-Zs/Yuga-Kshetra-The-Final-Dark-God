@@ -29,6 +29,7 @@ add_executable(${PROJECT_NAME}
     Source/World/Generation/Structures/StructureBuilder.cpp
     Source/World/Generation/Terrain/SuperFlatGenerator.cpp
     Source/World/Generation/Terrain/ClassicOverWorldGenerator.cpp
+    Source/World/Generation/Terrain/FlatPlainGenerator.cpp
     Source/World/Chunk/ChunkMesh.cpp
     Source/World/Chunk/ChunkManager.cpp
     Source/World/Chunk/Chunk.cpp
@@ -102,4 +103,14 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     glm::glm
     ImGui-SFML::ImGui-SFML
     glad
+)
+
+# Copy runtime resources to executable directory for double-click launch
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/Shaders
+        $<TARGET_FILE_DIR:${PROJECT_NAME}>/Shaders
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/Res
+        $<TARGET_FILE_DIR:${PROJECT_NAME}>/Res
 )

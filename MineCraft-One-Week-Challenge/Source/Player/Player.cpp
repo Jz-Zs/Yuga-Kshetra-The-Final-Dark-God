@@ -12,7 +12,7 @@
 #include <imgui.h>
 
 Player::Player()
-    : Entity({2500, 125, 2500}, {0.f, 0.f, 0.f}, {0.3f, 1.f, 0.3f})
+    : Entity({64, 33, 64}, {0.f, 0.f, 0.f}, {0.3f, 1.f, 0.3f})
     , m_itemDown(sf::Keyboard::Key::Down)
     , m_itemUp(sf::Keyboard::Key::Up)
     , m_flyKey(sf::Keyboard::Key::F)
@@ -273,14 +273,23 @@ void Player::mouseInput(const sf::Window& window)
 
 void Player::draw(RenderMaster& master)
 {
-    if (ImGui::Begin("Player"))
+    ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(280, 210), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowCollapsed(false, ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Inventory", nullptr,
+                     ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
     {
-
+        ImGui::TextColored(ImVec4(1, 1, 0, 1), "=== Backpack ===");
+        ImGui::Separator();
         for (unsigned i = 0; i < m_items.size(); i++)
         {
-            ImGui::Text("%s %d", m_items[i].getMaterial().name.c_str(), m_items[i].getNumInStack());
+            ImGui::Text("[%u] %s x%d", i + 1,
+                        m_items[i].getMaterial().name.c_str(),
+                        m_items[i].getNumInStack());
         }
-        ImGui::Text("X: %.2f, Y: %.2f, z: %.2f", position.x, position.y, position.z);
+        ImGui::Separator();
+        ImGui::Text("Pos: %.1f, %.1f, %.1f", position.x, position.y,
+                    position.z);
     }
     ImGui::End();
 }

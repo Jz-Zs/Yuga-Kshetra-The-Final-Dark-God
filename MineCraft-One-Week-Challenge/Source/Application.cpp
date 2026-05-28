@@ -8,6 +8,7 @@
 #include "Renderer/RenderMaster.h"
 #include "World/Block/BlockDatabase.h"
 #include "World/Event/PlayerDigEvent.h"
+#include "World/WorldConstants.h"
 float g_timeElapsed = 0;
 
 Application::Application(sf::Window& window, const Config& config)
@@ -69,32 +70,28 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
         lastPosition = ray.getEnd();
     }
 
-    if (m_player.position.x < 0)
-        m_player.position.x = 0;
-    if (m_player.position.z < 0)
-        m_player.position.z = 0;
-
     m_camera.update();
     m_player.update(dt.asSeconds(), m_world);
     m_world.update(m_camera);
+
+    // Clamp player to MVP world bounds (after physics)
+    if (m_player.position.x < 0)
+        m_player.position.x = 0;
+    if (m_player.position.x >= MVP_WORLD_SIZE_X - 1)
+        m_player.position.x = static_cast<float>(MVP_WORLD_SIZE_X - 1);
+    if (m_player.position.z < 0)
+        m_player.position.z = 0;
+    if (m_player.position.z >= MVP_WORLD_SIZE_Z - 1)
+        m_player.position.z = static_cast<float>(MVP_WORLD_SIZE_Z - 1);
+    if (m_player.position.y < 0)
+        m_player.position.y = 1;
 }
 
 void Application::on_render(bool show_debug_info)
 {
     static sf::Clock dt;
 
-    static bool drawGUI = false;
-    static ToggleKey drawKey(sf::Keyboard::Key::F3);
-
-    if (drawKey.isKeyPressed())
-    {
-        drawGUI = !drawGUI;
-    }
-
-    if (drawGUI)
-    {
-        m_player.draw(m_masterRenderer);
-    }
+    m_player.draw(m_masterRenderer);
 
     m_world.renderWorld(m_masterRenderer, m_camera);
 

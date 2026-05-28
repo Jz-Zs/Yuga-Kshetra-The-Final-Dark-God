@@ -2,13 +2,12 @@
 
 #include <iostream>
 
-#include "../Generation/Terrain/ClassicOverWorldGenerator.h"
-#include "../Generation/Terrain/SuperFlatGenerator.h"
+#include "../Generation/Terrain/FlatPlainGenerator.h"
 
 ChunkManager::ChunkManager(World &world)
     : m_world(&world)
 {
-    m_terrainGenerator = std::make_unique<ClassicOverWorldGenerator>();
+    m_terrainGenerator = std::make_unique<FlatPlainGenerator>();
 }
 
 Chunk &ChunkManager::getChunk(int x, int z)

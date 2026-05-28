@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmake -S . -B out/build/x64-Debug -G \"Visual Studio 17 2022\" -A x64)",
+      "Bash(cmake -S . -B out/build/x64-Debug -G Ninja)",
+      "Bash(where vcpkg *)",
+      "Bash(vcpkg --version)",
+      "Read(//c/Program Files/Microsoft Visual Studio/2022/Community/VC/vcpkg/scripts/buildsystems/**)",
+      "Read(//c/vcpkg/scripts/buildsystems/**)",
+      "Read(//d/vcpkg/scripts/buildsystems/**)",
+      "Bash(VCPKG_ROOT=\"D:/Microsoft Visual Studio/2022/Community/VC/vcpkg\" cmake -S . -B out/build/x64-Debug -G Ninja -DCMAKE_TOOLCHAIN_FILE=\"D:/Microsoft Visual Studio/2022/Community/VC/vcpkg/scripts/buildsystems/vcpkg.cmake\")",
+      "Bash(rm -f out/build/x64-Debug/CMakeCache.txt)",
+      "Bash(rm -rf out/build/x64-Debug/CMakeFiles)",
+      "Bash(cmake -S . -B out/build/x64-Debug -G \"Visual Studio 17 2022\" -A x64 -DCMAKE_TOOLCHAIN_FILE=\"D:/Microsoft Visual Studio/2022/Community/VC/vcpkg/scripts/buildsystems/vcpkg.cmake\")",
+      "Bash(cmake --build out/build/x64-Debug --config Debug)",
+      "Bash(cmake -S \"D:/Yuga_Kshetra-The_Final_Dark_God/MineCraft-One-Week-Challenge\" -B \"D:/Yuga_Kshetra-The_Final_Dark_God/MineCraft-One-Week-Challenge/out/build/x64-Debug\" -G \"Visual Studio 17 2022\" -A x64 -DCMAKE_TOOLCHAIN_FILE=\"D:/Microsoft Visual Studio/2022/Community/VC/vcpkg/scripts/buildsystems/vcpkg.cmake\")",
+      "Bash(cmake --build \"D:/Yuga_Kshetra-The_Final_Dark_God/MineCraft-One-Week-Challenge/out/build/x64-Debug\" --config Debug)",
+      "Bash(findstr /C:\"FlatPlain\" \"out/build/x64-Debug/Debug/minecraft-one-week-challenge.exe\")",
+      "Bash(cmake --build out/build/x64-Debug --config Debug --verbose)"
+    ]
+  }
+}

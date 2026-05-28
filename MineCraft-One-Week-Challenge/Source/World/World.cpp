@@ -9,6 +9,7 @@
 #include "../Player/Player.h"
 #include "../Renderer/RenderMaster.h"
 #include "../Util/Random.h"
+#include "WorldConstants.h"
 
 World::World(const Camera &camera, const Config &config, Player &player)
     : m_chunkManager(*this)
@@ -86,8 +87,8 @@ void World::loadChunks(const Camera &camera)
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
             int minX = std::max(cameraX - i, 0);
             int minZ = std::max(cameraZ - i, 0);
-            int maxX = cameraX + i;
-            int maxZ = cameraZ + i;
+            int maxX = std::min(cameraX + i, MVP_CHUNK_COUNT - 1);
+            int maxZ = std::min(cameraZ + i, MVP_CHUNK_COUNT - 1);
 
             for (int x = minX; x < maxX; ++x) {
                 for (int z = minZ; z < maxZ; ++z) {
@@ -235,44 +236,20 @@ void World::updateChunks()
 
 void World::setSpawnPoint()
 {
-    sf::Clock timer;
-    std::cout << "Searching for spawn...\n";
-    int attempts = 0;
-    int chunkX = -1;
-    int chunkZ = -1;
-    int blockX = 0;
-    int blockZ = 0;
-    int blockY = 0;
+    // Fixed spawn at world center for MVP 128x128 world
+    constexpr int spawnChunkX = 4; // 64 / CHUNK_SIZE
+    constexpr int spawnChunkZ = 4;
+    constexpr int spawnBlockX = 0; // 64 % CHUNK_SIZE, local coords
+    constexpr int spawnBlockZ = 0;
 
-    auto h = m_chunkManager.getTerrainGenerator().getMinimumSpawnHeight();
+    m_chunkManager.loadChunk(spawnChunkX, spawnChunkZ);
+    int surfaceY =
+        m_chunkManager.getChunk(spawnChunkX, spawnChunkZ)
+            .getHeightAt(spawnBlockX, spawnBlockZ);
 
-    while (blockY <= h) {
-        m_chunkManager.unloadChunk(chunkX, chunkZ);
+    m_playerSpawnPoint = {64.0f, static_cast<float>(surfaceY + 1), 64.0f};
 
-        chunkX = RandomSingleton::get().intInRange(100, 200);
-        chunkZ = RandomSingleton::get().intInRange(100, 200);
-        blockX = RandomSingleton::get().intInRange(0, 15);
-        blockZ = RandomSingleton::get().intInRange(0, 15);
-
-        m_chunkManager.loadChunk(chunkX, chunkZ);
-        blockY =
-            m_chunkManager.getChunk(chunkX, chunkZ).getHeightAt(blockX, blockZ);
-        attempts++;
-    }
-
-    int worldX = chunkX * CHUNK_SIZE + blockX;
-    int worldZ = chunkZ * CHUNK_SIZE + blockZ;
-
-    m_playerSpawnPoint = {worldX, blockY, worldZ};
-
-    for (int x = worldX - 1; x <= worldX + 1; ++x) {
-        for (int z = worldZ - 1; z < worldZ + 1; ++z) {
-            std::unique_lock<std::mutex> lock(m_mainMutex);
-            m_chunkManager.loadChunk(x, z);
-        }
-    };
-
-    std::cout << "Spawn found! Attempts: " << attempts
-              << " Time Taken: " << timer.getElapsedTime().asSeconds()
-              << " seconds\n";
+    std::cout << "Spawn set at (" << m_playerSpawnPoint.x << ", "
+              << m_playerSpawnPoint.y << ", " << m_playerSpawnPoint.z
+              << ")\n";
 }
