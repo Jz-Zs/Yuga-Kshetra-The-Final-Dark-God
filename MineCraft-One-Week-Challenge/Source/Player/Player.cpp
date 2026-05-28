@@ -39,8 +39,7 @@ void Player::addItem(const Material& material)
     {
         if (m_items[i].getMaterial().id == id)
         {
-            /*int leftOver =*/m_items[i].add(1);
-
+            m_items[i].add(1);
             return;
         }
         else if (m_items[i].getMaterial().id == Material::ID::Nothing)
@@ -273,23 +272,63 @@ void Player::mouseInput(const sf::Window& window)
 
 void Player::draw(RenderMaster& master)
 {
+    // Chinese name mapping for materials
+    auto cnName = [](Material::ID id) -> std::string {
+        switch (id) {
+            case Material::ID::Nothing:    return "Empty";
+            case Material::ID::Grass:      return "CaoFangKuai";
+            case Material::ID::Dirt:       return "NiTu";
+            case Material::ID::Stone:      return "ShiTou";
+            case Material::ID::OakBark:    return "ShuPi";
+            case Material::ID::OakLeaf:    return "ShuYe";
+            case Material::ID::Sand:       return "ShaZi";
+            case Material::ID::Cactus:     return "XianRenZhang";
+            case Material::ID::Rose:       return "MeiGui";
+            case Material::ID::TallGrass:  return "Cao";
+            case Material::ID::DeadShrub:  return "KuShu";
+            default: return "WeiZhi";
+        }
+    };
+
+    // Build inventory text lines
+    std::vector<std::string> lines;
+    lines.push_back("=== BeiBao ===");
+    std::ostringstream ss;
+    for (unsigned i = 0; i < m_items.size(); i++)
+    {
+        ss.str("");
+        ss << "[" << (i + 1) << "] ";
+        if (m_items[i].getMaterial().id == Material::ID::Nothing) {
+            ss << "Empty";
+        } else {
+            ss << cnName(m_items[i].getMaterial().id)
+               << " x" << m_items[i].getNumInStack();
+        }
+        if ((int)i == m_heldItem) ss << " <";
+        lines.push_back(ss.str());
+    }
+    ss.str("");
+    ss << "Pos:" << (int)position.x << "," << (int)position.z
+       << "," << (int)position.y;
+    lines.push_back(ss.str());
+
+    // Render to texture via software bitmap font
+    constexpr int SCALE = 2;
+    int texW = 280, texH = (int)lines.size() * 10 + 4;
+    GLuint texId = m_bitmapText.update(lines, texW, texH);
+
+    // Display via ImGui, scaled 2x
+    float displayW = (float)(texW * SCALE);
+    float displayH = (float)(texH * SCALE);
     ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(280, 210), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(displayW + 16, displayH + 36),
+                             ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowCollapsed(false, ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Inventory", nullptr,
                      ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
     {
-        ImGui::TextColored(ImVec4(1, 1, 0, 1), "=== Backpack ===");
-        ImGui::Separator();
-        for (unsigned i = 0; i < m_items.size(); i++)
-        {
-            ImGui::Text("[%u] %s x%d", i + 1,
-                        m_items[i].getMaterial().name.c_str(),
-                        m_items[i].getNumInStack());
-        }
-        ImGui::Separator();
-        ImGui::Text("Pos: %.1f, %.1f, %.1f", position.x, position.y,
-                    position.z);
+        ImGui::Image((ImTextureID)(intptr_t)texId,
+                     ImVec2(displayW, displayH));
     }
     ImGui::End();
 }

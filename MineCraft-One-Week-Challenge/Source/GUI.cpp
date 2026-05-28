@@ -11,8 +11,7 @@
 #include <imgui_sfml/imgui-SFML.h>
 
 // Minimal modern OpenGL (3.3+) renderer for ImGui
-// Replaces ImGui::SFML::Render() which uses legacy GL 1.x immediate mode
-// that is unavailable in OpenGL 4.6 Core Profile.
+// Replaces ImGui::SFML::Render() which uses legacy GL 1.x immediate mode.
 namespace
 {
 GLuint g_ShaderProgram = 0;
@@ -172,9 +171,7 @@ void renderImGui(ImDrawData* draw_data)
         for (int i = 0; i < cmd_list->CmdBuffer.Size; i++) {
             const ImDrawCmd* cmd = &cmd_list->CmdBuffer[i];
             if (cmd->UserCallback) {
-                if (cmd->UserCallback == ImDrawCallback_ResetRenderState)
-                    ; // Not needed for our simple renderer
-                else
+                if (cmd->UserCallback != ImDrawCallback_ResetRenderState)
                     cmd->UserCallback(cmd_list, cmd);
             } else {
                 ImVec4 clip = cmd->ClipRect;
@@ -230,24 +227,24 @@ namespace GUI
             return false;
         createDeviceObjects();
 
-        // Manually create font texture (ImGui::SFML::UpdateFontTexture is not exported)
+        // Minimal font setup: prevent ImGui assertion, actual text via BitmapText
         ImGuiIO& io = ImGui::GetIO();
         io.Fonts->AddFontDefault();
-        unsigned char* pixels = nullptr;
-        int width = 0, height = 0;
-        io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-        if (pixels == nullptr || width <= 0 || height <= 0)
-            return false;
+        unsigned char* pixels;
+        int w, h;
+        io.Fonts->GetTexDataAsRGBA32(&pixels, &w, &h);
 
-        GLuint fontTex = 0;
+        GLuint fontTex;
         glGenTextures(1, &fontTex);
         glBindTexture(GL_TEXTURE_2D, fontTex);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0,
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0,
                      GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        io.Fonts->TexData->SetTexID((ImTextureID)(intptr_t)fontTex);
-        io.Fonts->TexData->SetStatus(ImTextureStatus_OK);
+        io.Fonts->SetTexID((ImTextureID)(intptr_t)fontTex);
+        if (io.Fonts->TexData)
+            io.Fonts->TexData->SetStatus(ImTextureStatus_OK);
 
         return true;
     }

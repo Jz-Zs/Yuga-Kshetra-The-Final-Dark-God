@@ -53,6 +53,7 @@ add_executable(${PROJECT_NAME}
     Source/Controller.cpp
     Source/Util/Random.cpp
     Source/Util/FileUtil.cpp
+    Source/Util/BitmapText.cpp
     Source/Shaders/FloraShader.cpp
     Source/Shaders/WaterShader.cpp
     Source/Shaders/SkyboxShader.cpp

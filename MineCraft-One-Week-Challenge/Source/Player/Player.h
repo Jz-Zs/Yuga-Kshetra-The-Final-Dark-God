@@ -3,17 +3,19 @@
 
 #include <SFML/Graphics.hpp>
 #include <SFML/Audio.hpp>
+#include <memory>
+#include <sstream>
 #include <vector>
 
 #include "../Entity.h"
 #include "../Input/ToggleKey.h"
 #include "../Item/ItemStack.h"
+#include "../Util/BitmapText.h"
 
 class Keyboard;
 class World;
 class RenderMaster;
 
-/// @brief Player character, including player movements and world interactions.
 class Player : public Entity {
   public:
     Player();
@@ -39,7 +41,6 @@ class Player : public Entity {
     bool m_isSneak = false;
 
     std::vector<ItemStack> m_items;
-    std::vector<sf::Text> m_itemText;
     int m_heldItem = 0;
 
     ToggleKey m_itemDown;
@@ -55,6 +56,9 @@ class Player : public Entity {
     ToggleKey m_slow;
 
     glm::vec3 m_acceleration;
+
+    // Software bitmap text renderer
+    BitmapText m_bitmapText;
 };
 
 #endif // PLAYER_H_INCLUDED
