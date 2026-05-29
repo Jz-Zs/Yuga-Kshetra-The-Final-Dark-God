@@ -43,8 +43,10 @@ bool Player::addItem(const Material& material)
     {
         if (m_items[i].getMaterial().id == id)
         {
-            m_items[i].add(1);
-            return true;
+            int leftover = m_items[i].add(1);
+            if (leftover == 0)
+                return true;
+            // Stack full, continue to next slot
         }
     }
     // Second pass: find first empty slot
@@ -297,7 +299,7 @@ void Player::mouseInput(const sf::Window& window)
 
 void Player::draw(RenderMaster& master, const Camera* camera)
 {
-    // --- Chinese material names ---
+    // --- Chinese material names (kept for future text-based UI) ---
     auto cnName = [](Material::ID id) -> std::string {
         switch (id) {
             case Material::ID::Nothing:    return "空";
@@ -315,161 +317,219 @@ void Player::draw(RenderMaster& master, const Camera* camera)
         }
     };
 
-    // --- Hotbar text lines (always visible) ---
-    std::vector<std::string> lines;
-    lines.push_back("=== 快捷栏 ===");
-    std::ostringstream ss;
-    for (int i = 0; i < 5; i++)
-    {
-        ss.str("");
-        ss << "[ " << (i + 1) << " ] ";
-        if (m_items[i].getMaterial().id == Material::ID::Nothing)
-            ss << "空";
-        else
-            ss << cnName(m_items[i].getMaterial().id)
-               << " x" << m_items[i].getNumInStack();
-        if (i == m_heldItem) ss << " <";
-        lines.push_back(ss.str());
-    }
-    lines.push_back("[B] 打开/关闭背包");
+    auto& atlas = BlockDatabase::get().textureAtlas;
+    GLuint atlasID = atlas.getID();
+    const float slotSize = 48.0f;
+    const float padding = 4.0f;
+    const float texPad = 4.0f;
+    const int cols = 5;
 
-    // Render hotbar text
-    int texW = 420, texH = 120;
-    GLuint texId = m_bitmapText.update(lines, texW, texH);
-    ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2((float)(texW + 16), (float)(texH + 16)),
-                             ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Hotbar", nullptr,
-                     ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
-                     ImGuiWindowFlags_NoTitleBar))
-    {
-        ImGui::Image((ImTextureID)(intptr_t)texId,
-                     ImVec2((float)texW, (float)texH));
-    }
-    ImGui::End();
+    // Window flags: fixed position, no user dragging
+    const int winFlags = ImGuiWindowFlags_NoMove |
+                         ImGuiWindowFlags_NoResize |
+                         ImGuiWindowFlags_NoCollapse |
+                         ImGuiWindowFlags_NoTitleBar |
+                         ImGuiWindowFlags_NoBringToFrontOnFocus;
 
-    // --- Backpack window (toggled with B) ---
+    auto displaySize = ImGui::GetIO().DisplaySize;
+    // Content size: grid + surrounding padding (no extra frame allowance)
+    float contentW = cols * (slotSize + padding) + padding;
+    float hotbarContentH = 1 * (slotSize + padding) + padding;
+
+    // Hotbar: bottom-center of screen
+    float hotbarX = (displaySize.x - contentW) * 0.5f;
+    float hotbarY = displaySize.y - hotbarContentH - 10.0f;
+
+    // --- Collect quantities for BitmapText rendering (batch all into one texture) ---
+    std::vector<std::string> qtyLines;
+    int qtySlotMap[20];
+    int qtyTexW = 40, qtyTexH = 0;
+    GLuint qtyTexId = 0;
+    std::memset(qtySlotMap, -1, sizeof(qtySlotMap));
+    for (int i = 0; i < 20; i++) {
+        int n = m_items[i].getNumInStack();
+        if (n > 1) {
+            qtySlotMap[i] = (int)qtyLines.size();
+            qtyLines.push_back(std::to_string(n));
+        }
+    }
+    if (!qtyLines.empty()) {
+        qtyTexH = 4 + (int)(qtyLines.size() * 26.4f) + 4;
+        qtyTexId = m_bitmapText.update(qtyLines, qtyTexW, qtyTexH);
+    }
+
+    // --- Draw a single inventory slot ---
+    auto drawSlot = [&](int slotIndex, ImVec2 p0, ImVec2 p1, bool isHotbar) {
+        const auto& stack = m_items[slotIndex];
+        const auto& mat = stack.getMaterial();
+
+        // Background
+        ImU32 bgColor = (slotIndex == m_heldItem)
+            ? IM_COL32(255, 215, 0, 80)
+            : IM_COL32(60, 60, 60, 200);
+        auto* dl = ImGui::GetWindowDrawList();
+        dl->AddRectFilled(p0, p1, bgColor);
+        dl->AddRect(p0, p1, IM_COL32(180, 180, 180, 255));
+
+        // Selected hotbar slot: yellow border
+        if (isHotbar && slotIndex == m_heldItem)
+        {
+            dl->AddRect(p0, p1, IM_COL32(255, 255, 0, 255), 0.0f, 0, 2.0f);
+        }
+
+        // Item icon
+        if (mat.id != Material::ID::Nothing)
+        {
+            BlockId bId = mat.toBlockID();
+            const auto& blockData = BlockDatabase::get().getData(bId);
+            auto uv = atlas.getTexture(blockData.getBlockData().texTopCoord);
+            ImVec2 uv0(uv[2], uv[5]);
+            ImVec2 uv1(uv[0], uv[3]);
+            dl->AddImage((ImTextureID)(intptr_t)atlasID,
+                         ImVec2(p0.x + texPad, p0.y + texPad),
+                         ImVec2(p1.x - texPad, p1.y - texPad),
+                         uv0, uv1);
+        }
+    };
+
+    // --- Draw quantity overlay on a slot ---
+    auto drawQuantity = [&](int slotIndex, ImVec2 p1) {
+        int lineIdx = qtySlotMap[slotIndex];
+        if (lineIdx < 0 || qtyTexId == 0) return;
+        // BitmapText renders at fontSize=24, line starts at y=4+N*26.4
+        float lineY = 4.0f + lineIdx * 26.4f;
+        float glyphH = 26.0f;
+        // Measure actual glyph width for right-alignment
+        float measuredW = (float)m_bitmapText.measureTextWidth(qtyLines[lineIdx]);
+        float glyphW = measuredW + 8.0f; // margin for glyph bearing
+        // UV sub-rect: glyph at x=4, texW=40
+        ImVec2 qtyUV0(0.08f, lineY / qtyTexH);
+        ImVec2 qtyUV1((4.0f + glyphW) / qtyTexW, (lineY + glyphH) / qtyTexH);
+        // Display size proportional to measured width
+        float qtyH = 20.0f;
+        float qtyW = glyphW * (qtyH / glyphH);
+        // Right-aligned at slot bottom-right
+        ImGui::GetWindowDrawList()->AddImage(
+            (ImTextureID)(intptr_t)qtyTexId,
+            ImVec2(p1.x - qtyW - 1.0f, p1.y - qtyH),
+            ImVec2(p1.x - 1.0f, p1.y),
+            qtyUV0, qtyUV1);
+    };
+
+    // --- Backpack window (3×5 grid, slots 5-19) ---
     if (m_backpackOpen)
     {
-        auto& atlas = BlockDatabase::get().textureAtlas;
-        GLuint atlasID = atlas.getID();
-        const float slotSize = 48.0f;
-        const int cols = 5;
-        const int rows = 4; // row 0 = hotbar, rows 1-3 = backpack
-        const float padding = 4.0f;
-        const float texPad = 4.0f; // padding inside slot for texture icon
+        const int bpRows = 3; // slots 5-19
+        float bpContentH = bpRows * (slotSize + padding) + padding;
+        float bpX = (displaySize.x - contentW) * 0.5f;
+        float bpY = hotbarY - bpContentH - 6.0f;
 
-        float winW = cols * (slotSize + padding) + padding + 16.0f;
-        float winH = rows * (slotSize + padding) + padding + 16.0f;
-
-        ImGui::SetNextWindowPos(ImVec2(10, texH + 30), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(winW, winH), ImGuiCond_FirstUseEver);
-        if (ImGui::Begin("背包", nullptr,
-                         ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
+        ImGui::SetNextWindowPos(ImVec2(bpX, bpY), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(contentW, bpContentH), ImGuiCond_Always);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+        if (ImGui::Begin("背包", nullptr, winFlags))
         {
-            for (int row = 0; row < rows; row++)
+            for (int bpRow = 0; bpRow < bpRows; bpRow++)
             {
                 for (int col = 0; col < cols; col++)
                 {
-                    int slotIndex = row * cols + col; // 0-19
-                    const auto& stack = m_items[slotIndex];
-                    const auto& mat = stack.getMaterial();
-
-                    // Slot position
+                    int slotIndex = 5 + bpRow * cols + col; // slots 5-19
                     float x = padding + col * (slotSize + padding);
-                    float y = padding + row * (slotSize + padding);
+                    float y = padding + bpRow * (slotSize + padding);
                     ImGui::SetCursorPos(ImVec2(x, y));
 
-                    // Dummy widget to tell ImGui content extends here (prevents assertion)
-                    ImGui::Dummy(ImVec2(slotSize, slotSize));
-
-                    // Unique ID per slot
                     ImGui::PushID(slotIndex);
-
-                    // Draw slot background + item texture
                     ImVec2 p0 = ImGui::GetCursorScreenPos();
+                    ImGui::Dummy(ImVec2(slotSize, slotSize));
                     ImVec2 p1(p0.x + slotSize, p0.y + slotSize);
+                    drawSlot(slotIndex, p0, p1, false);
+                    drawQuantity(slotIndex, p1);
 
-                    // Colored background: highlighted if selected
-                    ImU32 bgColor = (slotIndex == m_heldItem)
-                        ? IM_COL32(255, 215, 0, 80)
-                        : IM_COL32(60, 60, 60, 200);
-                    ImGui::GetWindowDrawList()->AddRectFilled(p0, p1, bgColor);
-                    ImGui::GetWindowDrawList()->AddRect(p0, p1, IM_COL32(180, 180, 180, 255));
-
-                    // Draw item icon if slot is not empty
-                    if (mat.id != Material::ID::Nothing)
-                    {
-                        BlockId bId = mat.toBlockID();
-                        const auto& blockData = BlockDatabase::get().getData(bId);
-                        auto uv = atlas.getTexture(blockData.getBlockData().texTopCoord);
-                        // uv: {xMax, yMax, xMin, yMax, xMin, yMin, xMax, yMin}
-                        ImVec2 uv0(uv[2], uv[5]); // (xMin, yMin)
-                        ImVec2 uv1(uv[0], uv[3]); // (xMax, yMax)
-                        ImGui::GetWindowDrawList()->AddImage(
-                            (ImTextureID)(intptr_t)atlasID,
-                            ImVec2(p0.x + texPad, p0.y + texPad),
-                            ImVec2(p1.x - texPad, p1.y - texPad),
-                            uv0, uv1);
-
-                        // Quantity text (white, bottom-right)
-                        std::ostringstream qty;
-                        qty << stack.getNumInStack();
-                        ImGui::GetWindowDrawList()->AddText(
-                            ImVec2(p1.x - 20, p1.y - 18),
-                            IM_COL32(255, 255, 255, 255),
-                            qty.str().c_str());
-                    }
-
-                    // Yellow border on selected hotbar slot
-                    if (row == 0 && col == m_heldItem)
-                    {
-                        ImGui::GetWindowDrawList()->AddRect(
-                            p0, p1, IM_COL32(255, 255, 0, 255), 0.0f, 0, 2.0f);
-                    }
-
-                    // --- Drag and Drop ---
+                    // Drag-and-drop
+                    const auto& mat = m_items[slotIndex].getMaterial();
                     if (mat.id != Material::ID::Nothing &&
                         ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID))
                     {
                         ImGui::SetDragDropPayload("INV_SLOT", &slotIndex, sizeof(int));
-                        // Drag preview: small icon
                         BlockId bId = mat.toBlockID();
-                        const auto& blockData = BlockDatabase::get().getData(bId);
-                        auto uv = atlas.getTexture(blockData.getBlockData().texTopCoord);
-                        ImVec2 uv0(uv[2], uv[5]);
-                        ImVec2 uv1(uv[0], uv[3]);
+                        const auto& bd = BlockDatabase::get().getData(bId);
+                        auto uv = atlas.getTexture(bd.getBlockData().texTopCoord);
                         ImGui::Image((ImTextureID)(intptr_t)atlasID,
                                      ImVec2(slotSize * 0.7f, slotSize * 0.7f),
-                                     uv0, uv1);
+                                     ImVec2(uv[2], uv[5]), ImVec2(uv[0], uv[3]));
                         ImGui::EndDragDropSource();
                     }
-
                     if (ImGui::BeginDragDropTarget())
                     {
-                        const ImGuiPayload* payload =
-                            ImGui::AcceptDragDropPayload("INV_SLOT");
-                        if (payload)
+                        const ImGuiPayload* pl = ImGui::AcceptDragDropPayload("INV_SLOT");
+                        if (pl)
                         {
-                            int srcSlot = *(const int*)payload->Data;
-                            std::swap(m_items[srcSlot], m_items[slotIndex]);
+                            int src = *(const int*)pl->Data;
+                            std::swap(m_items[src], m_items[slotIndex]);
                         }
                         ImGui::EndDragDropTarget();
                     }
-
                     ImGui::PopID();
                 }
             }
         }
         ImGui::End();
+        ImGui::PopStyleVar();
     }
+
+    // --- Hotbar window (1×5, slots 0-4, always visible) ---
+    ImGui::SetNextWindowPos(ImVec2(hotbarX, hotbarY), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(contentW, hotbarContentH), ImGuiCond_Always);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    if (ImGui::Begin("Hotbar", nullptr, winFlags))
+    {
+        for (int col = 0; col < 5; col++)
+        {
+            int slotIndex = col;
+            float x = padding + col * (slotSize + padding);
+            float y = padding;
+            ImGui::SetCursorPos(ImVec2(x, y));
+
+            ImGui::PushID(slotIndex);
+            ImVec2 p0 = ImGui::GetCursorScreenPos();
+            ImGui::Dummy(ImVec2(slotSize, slotSize));
+            ImVec2 p1(p0.x + slotSize, p0.y + slotSize);
+            drawSlot(slotIndex, p0, p1, true);
+            drawQuantity(slotIndex, p1);
+
+            // Drag-and-drop on hotbar too
+            const auto& mat = m_items[slotIndex].getMaterial();
+            if (mat.id != Material::ID::Nothing &&
+                ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID))
+            {
+                ImGui::SetDragDropPayload("INV_SLOT", &slotIndex, sizeof(int));
+                BlockId bId = mat.toBlockID();
+                const auto& bd = BlockDatabase::get().getData(bId);
+                auto uv = atlas.getTexture(bd.getBlockData().texTopCoord);
+                ImGui::Image((ImTextureID)(intptr_t)atlasID,
+                             ImVec2(slotSize * 0.7f, slotSize * 0.7f),
+                             ImVec2(uv[2], uv[5]), ImVec2(uv[0], uv[3]));
+                ImGui::EndDragDropSource();
+            }
+            if (ImGui::BeginDragDropTarget())
+            {
+                const ImGuiPayload* pl = ImGui::AcceptDragDropPayload("INV_SLOT");
+                if (pl)
+                {
+                    int src = *(const int*)pl->Data;
+                    std::swap(m_items[src], m_items[slotIndex]);
+                }
+                ImGui::EndDragDropTarget();
+            }
+            ImGui::PopID();
+        }
+    }
+    ImGui::End();
+    ImGui::PopStyleVar();
 
     // --- Drop item icon rendering via ImGui overlay ---
     if (m_pDropItems && !m_pDropItems->empty() && camera)
     {
-        auto& atlas = BlockDatabase::get().textureAtlas;
-        GLuint atlasID = atlas.getID();
-
         auto windowSize = ImGui::GetIO().DisplaySize;
         float winW = windowSize.x;
         float winH = windowSize.y;
@@ -483,22 +543,18 @@ void Player::draw(RenderMaster& master, const Camera* camera)
             if (!drop.alive)
                 continue;
 
-            // 3D world position → clip space
             glm::vec4 clip = vp * glm::vec4(drop.position, 1.0f);
             if (clip.w <= 0.0f)
                 continue;
 
-            // Clip → NDC
             glm::vec3 ndc = glm::vec3(clip) / clip.w;
             if (ndc.x < -1.0f || ndc.x > 1.0f ||
                 ndc.y < -1.0f || ndc.y > 1.0f)
                 continue;
 
-            // NDC → screen coordinates
             float screenX = (ndc.x * 0.5f + 0.5f) * winW;
             float screenY = (1.0f - (ndc.y * 0.5f + 0.5f)) * winH;
 
-            // Distance-based icon size and fade
             float dist = glm::distance(
                 glm::vec3(camera->position), drop.position);
             float maxDist = 32.0f;
@@ -506,16 +562,15 @@ void Player::draw(RenderMaster& master, const Camera* camera)
                 continue;
 
             float scale = 1.0f - (dist / maxDist);
-            float alpha = 0.3f + 0.7f * (scale * scale);
-            float iconSize = 28.0f * (0.5f + 0.5f * scale);
+            float alpha = 0.4f + 0.6f * (scale * scale);
+            float iconSize = 32.0f * (0.5f + 0.5f * scale);
 
-            // Get texture UV for this item's top face
             BlockId bId = drop.material->toBlockID();
             const auto& blockData = BlockDatabase::get().getData(bId);
             auto uv = atlas.getTexture(blockData.getBlockData().texTopCoord);
 
-            ImVec2 uv0(uv[2], uv[5]); // (xMin, yMin)
-            ImVec2 uv1(uv[0], uv[3]); // (xMax, yMax)
+            ImVec2 uv0(uv[2], uv[5]);
+            ImVec2 uv1(uv[0], uv[3]);
             ImVec2 p0(screenX - iconSize * 0.5f, screenY - iconSize * 0.5f);
             ImVec2 p1(screenX + iconSize * 0.5f, screenY + iconSize * 0.5f);
 
@@ -523,18 +578,15 @@ void Player::draw(RenderMaster& master, const Camera* camera)
                 (int)(255 * alpha), (int)(255 * alpha),
                 (int)(255 * alpha), (int)(255 * alpha));
 
-            // Dark outline shadow for visibility
-            float outlineOff = 1.5f;
-            ImU32 outlineCol = IM_COL32(0, 0, 0, (int)(180 * alpha));
+            float outlineOff = 2.0f;
+            ImU32 outlineCol = IM_COL32(255, 255, 255, (int)(140 * alpha));
             ImVec2 os0(p0.x - outlineOff, p0.y - outlineOff);
             ImVec2 os1(p1.x + outlineOff, p1.y + outlineOff);
             ImGui::GetBackgroundDrawList()->AddImage(
                 (ImTextureID)(intptr_t)atlasID, os0, os1, uv0, uv1, outlineCol);
-            // Dark border rect
             ImGui::GetBackgroundDrawList()->AddRect(os0, os1,
-                IM_COL32(0, 0, 0, (int)(220 * alpha)), 0.0f, 0, 1.5f);
+                IM_COL32(255, 255, 255, (int)(200 * alpha)), 0.0f, 0, 1.5f);
 
-            // Main icon on top
             ImGui::GetBackgroundDrawList()->AddImage(
                 (ImTextureID)(intptr_t)atlasID, p0, p1, uv0, uv1, col);
         }

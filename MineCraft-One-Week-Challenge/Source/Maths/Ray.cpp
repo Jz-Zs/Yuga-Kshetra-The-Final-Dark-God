@@ -1,5 +1,7 @@
 #include "Ray.h"
 
+#include <cmath>
+
 Ray::Ray(const glm::vec3 &position, const glm::vec3 &direction)
     : m_rayStart(position)
     , m_rayEnd(position)
@@ -14,9 +16,17 @@ void Ray::step(float scale)
 
     auto &p = m_rayEnd;
 
-    p.x -= glm::cos(yaw) * scale;
-    p.z -= glm::sin(yaw) * scale;
-    p.y -= glm::tan(pitch) * scale;
+    float dx = -glm::cos(yaw);
+    float dy = -glm::tan(pitch);
+    float dz = -glm::sin(yaw);
+
+    // Normalize so step length = scale, no overshoot on steep angles
+    float len = std::sqrt(dx * dx + dy * dy + dz * dz);
+    float inv = scale / len;
+
+    p.x += dx * inv;
+    p.y += dy * inv;
+    p.z += dz * inv;
 }
 
 const glm::vec3 &Ray::getEnd() const

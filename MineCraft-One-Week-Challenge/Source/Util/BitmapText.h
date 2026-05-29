@@ -15,6 +15,8 @@ class BitmapText {
     GLuint update(const std::vector<std::string>& lines,
                   int texWidth, int texHeight);
 
+    int measureTextWidth(const std::string& text);
+
   private:
     GLuint m_texID = 0;
     int m_texW = 0, m_texH = 0;
@@ -25,5 +27,4 @@ class BitmapText {
 
     int renderUTF8(unsigned char* buf, int bufW, int bufH,
                    int x, int y, const std::string& text);
-    int measureTextWidth(const std::string& text);
 };

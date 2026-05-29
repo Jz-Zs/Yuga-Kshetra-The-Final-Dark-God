@@ -33,41 +33,43 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
     static sf::Clock timer;
     glm::vec3 lastPosition;
 
-    // Ray is cast as player's 'vision'
-    for (Ray ray({m_player.position.x, m_player.position.y + 0.6f, m_player.position.z},
-                 m_player.rotation); // Corrected for camera offset
-         ray.getLength() < 6; ray.step(0.05f))
+    // Skip block interaction when Alt is held (mouse is in UI mode)
+    if (!sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LAlt))
     {
-        int x = static_cast<int>(ray.getEnd().x);
-        int y = static_cast<int>(ray.getEnd().y);
-        int z = static_cast<int>(ray.getEnd().z);
-
-        auto block = m_world.getBlock(x, y, z);
-        auto id = (BlockId)block.id;
-
-        if (id != BlockId::Air && id != BlockId::Water)
+        // Ray is cast as player's 'vision'
+        for (Ray ray({m_player.position.x, m_player.position.y + 0.6f, m_player.position.z},
+                     m_player.rotation); // Corrected for camera offset
+             ray.getLength() < 6; ray.step(0.05f))
         {
-            if (timer.getElapsedTime().asSeconds() > 0.2)
+            int x = static_cast<int>(ray.getEnd().x);
+            int y = static_cast<int>(ray.getEnd().y);
+            int z = static_cast<int>(ray.getEnd().z);
+
+            auto block = m_world.getBlock(x, y, z);
+            auto id = (BlockId)block.id;
+
+            if (id != BlockId::Air && id != BlockId::Water)
             {
-                if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left))
+                if (timer.getElapsedTime().asSeconds() > 0.2)
                 {
-                    timer.restart();
-                    // The player "digs" the block up
-                    m_world.addEvent<PlayerDigEvent>(sf::Mouse::Button::Left, ray.getEnd(),
-                                                     m_player);
-                    break;
-                }
-                else if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Right))
-                {
-                    timer.restart();
-                    // Block is placed by player
-                    m_world.addEvent<PlayerDigEvent>(sf::Mouse::Button::Right, lastPosition,
-                                                     m_player);
-                    break;
+                    if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left))
+                    {
+                        timer.restart();
+                        m_world.addEvent<PlayerDigEvent>(sf::Mouse::Button::Left, ray.getEnd(),
+                                                         m_player);
+                        break;
+                    }
+                    else if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Right))
+                    {
+                        timer.restart();
+                        m_world.addEvent<PlayerDigEvent>(sf::Mouse::Button::Right, lastPosition,
+                                                         m_player);
+                        break;
+                    }
                 }
             }
+            lastPosition = ray.getEnd();
         }
-        lastPosition = ray.getEnd();
     }
 
     m_camera.update();
