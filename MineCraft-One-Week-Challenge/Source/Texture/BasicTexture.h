@@ -21,6 +21,8 @@ class BasicTexture : public NonCopyable {
 
     void bindTexture() const;
 
+    GLuint getID() const { return m_id; }
+
   private:
     GLuint m_id;
 };

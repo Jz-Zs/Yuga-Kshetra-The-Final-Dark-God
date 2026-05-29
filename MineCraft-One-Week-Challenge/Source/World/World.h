@@ -11,6 +11,8 @@
 #include "Chunk/Chunk.h"
 #include "Chunk/ChunkManager.h"
 
+#include "../Entity/ItemDropEntity.h"
+
 #include "Event/IWorldEvent.h"
 
 #include "../Config.h"
@@ -30,12 +32,16 @@ class World : public NonCopyable {
     ChunkBlock getBlock(int x, int y, int z);
     void setBlock(int x, int y, int z, ChunkBlock block);
 
-    void update(const Camera &camera);
+    void update(const Camera &camera, float dt);
     void updateChunk(int blockX, int blockY, int blockZ);
 
     void renderWorld(RenderMaster &master, const Camera &camera);
 
     ChunkManager &getChunkManager();
+
+    void spawnDrop(const glm::ivec3& blockPos, BlockId blockId);
+    void updateDrops(float dt);
+    std::vector<ItemDropEntity>& getDropItems();
 
     static VectorXZ getBlockXZ(int x, int z);
     static VectorXZ getChunkXZ(int x, int z);
@@ -55,6 +61,7 @@ class World : public NonCopyable {
     ChunkManager m_chunkManager;
 
     std::vector<std::unique_ptr<IWorldEvent>> m_events;
+    std::vector<ItemDropEntity> m_dropItems;
     std::unordered_map<sf::Vector3i, ChunkSection *> m_chunkUpdates;
 
     std::atomic<bool> m_isRunning{true};

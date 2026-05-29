@@ -72,7 +72,24 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
 
     m_camera.update();
     m_player.update(dt.asSeconds(), m_world);
-    m_world.update(m_camera);
+    m_world.update(m_camera, dt.asSeconds());
+
+    // Auto-pickup: check player proximity to each drop
+    {
+        auto& drops = m_world.getDropItems();
+        for (auto& drop : drops)
+        {
+            if (!drop.alive)
+                continue;
+            if (glm::distance(m_player.position, drop.position) < 2.0f)
+            {
+                if (m_player.addItem(*drop.material))
+                {
+                    drop.alive = false;
+                }
+            }
+        }
+    }
 
     // Clamp player to MVP world bounds (after physics)
     if (m_player.position.x < 0) {
@@ -98,7 +115,8 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
 
 void Application::on_render(bool show_debug_info)
 {
-    m_player.draw(m_masterRenderer);
+    m_player.setDropItems(&m_world.getDropItems());
+    m_player.draw(m_masterRenderer, &m_camera);
 
     m_world.renderWorld(m_masterRenderer, m_camera);
 

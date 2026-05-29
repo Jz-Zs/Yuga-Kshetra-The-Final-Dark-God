@@ -31,23 +31,9 @@ void PlayerDigEvent::dig(World &world)
     switch (m_buttonPress) {
         case sf::Mouse::Button::Left: {
             auto block = world.getBlock(x, y, z);
-            const auto &material = Material::toMaterial((BlockId)block.id);
-            m_pPlayer->addItem(material);
-            /*
-                        auto r = 1;
-                        for (int y = -r; y < r; y++)
-                        for (int x = -r; x < r;x++)
-                        for (int z = -r; z < r; z++)
-                        {
-                            int newX = m_digSpot.x + x;
-                            int newY = m_digSpot.y + y;
-                            int newZ = m_digSpot.z + z;
-                            world.updateChunk   (newX, newY, newZ);
-                            world.setBlock      (newX, newY, newZ, 0);
-            */
+            world.spawnDrop(glm::ivec3(x, y, z), (BlockId)block.id);
             world.updateChunk(x, y, z);
             world.setBlock(x, y, z, 0);
-            //}
             break;
         }
 

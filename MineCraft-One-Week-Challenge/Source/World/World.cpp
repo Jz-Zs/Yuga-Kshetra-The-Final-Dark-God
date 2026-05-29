@@ -1,9 +1,11 @@
 #include "World.h"
 
+#include <algorithm>
 #include <future>
 #include <iostream>
 
 #include "../Camera.h"
+#include "../Item/Material.h"
 #include "../Input/ToggleKey.h"
 #include "../Maths/Vector2XZ.h"
 #include "../Player/Player.h"
@@ -56,7 +58,7 @@ void World::setBlock(int x, int y, int z, ChunkBlock block)
 
 // loads chunks
 // make chunk meshes
-void World::update(const Camera &camera)
+void World::update(const Camera &camera, float dt)
 {
     static ToggleKey key(sf::Keyboard::Key::C);
 
@@ -72,6 +74,7 @@ void World::update(const Camera &camera)
     m_events.clear();
 
     updateChunks();
+    updateDrops(dt);
 }
 
 ///@TODO
@@ -238,4 +241,57 @@ void World::setSpawnPoint()
     std::cout << "Spawn set at (" << m_playerSpawnPoint.x << ", "
               << m_playerSpawnPoint.y << ", " << m_playerSpawnPoint.z
               << ")\n";
+}
+
+void World::spawnDrop(const glm::ivec3& blockPos, BlockId blockId)
+{
+    const Material& mat = Material::toMaterial(blockId);
+    if (mat.id == Material::ID::Nothing)
+        return;
+
+    ItemDropEntity drop;
+    drop.position = glm::vec3(blockPos) + glm::vec3(0.5f, 0.75f, 0.5f);
+    drop.velocity = glm::vec3(0.0f);
+    drop.material = &mat;
+    drop.lifeTime = 0.0f;
+    drop.onGround = false;
+    drop.alive = true;
+    m_dropItems.push_back(drop);
+}
+
+void World::updateDrops(float dt)
+{
+    for (auto& drop : m_dropItems) {
+        if (!drop.alive)
+            continue;
+        if (!drop.onGround) {
+            drop.velocity.y -= 40.0f * dt;
+            drop.position += drop.velocity * dt;
+
+            // Ground check: query block below drop
+            int bx = static_cast<int>(drop.position.x);
+            int by = static_cast<int>(drop.position.y - 0.125f);
+            int bz = static_cast<int>(drop.position.z);
+            ChunkBlock below = getBlock(bx, by, bz);
+            if (below.id != 0 && below.getData().isCollidable) {
+                drop.position.y = static_cast<float>(by) + 1.0f + 0.125f;
+                drop.velocity = glm::vec3(0.0f);
+                drop.onGround = true;
+            }
+        }
+        drop.lifeTime += dt;
+        if (drop.lifeTime > 90.0f)
+            drop.alive = false;
+    }
+
+    // Remove dead drops
+    m_dropItems.erase(
+        std::remove_if(m_dropItems.begin(), m_dropItems.end(),
+                       [](const ItemDropEntity& d) { return !d.alive; }),
+        m_dropItems.end());
+}
+
+std::vector<ItemDropEntity>& World::getDropItems()
+{
+    return m_dropItems;
 }

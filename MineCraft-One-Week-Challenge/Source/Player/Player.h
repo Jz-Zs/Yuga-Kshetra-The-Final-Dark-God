@@ -8,8 +8,12 @@
 #include <vector>
 
 #include "../Entity.h"
+
+class Camera;
+
 #include "../Input/ToggleKey.h"
 #include "../Item/ItemStack.h"
+#include "../Entity/ItemDropEntity.h"
 #include "../Util/BitmapText.h"
 
 class Keyboard;
@@ -25,9 +29,10 @@ class Player : public Entity {
     void update(float dt, World &wolrd);
     void collide(World &world, const glm::vec3 &vel, float dt);
 
-    void addItem(const Material &material);
+    bool addItem(const Material &material);
+    void setDropItems(std::vector<ItemDropEntity>* drops);
 
-    void draw(RenderMaster &master);
+    void draw(RenderMaster &master, const Camera* camera = nullptr);
 
     ItemStack &getHeldItems();
 
@@ -53,12 +58,17 @@ class Player : public Entity {
     ToggleKey m_num4;
     ToggleKey m_num5;
 
+    ToggleKey m_backpackKey;
+    bool m_backpackOpen = false;
+
     ToggleKey m_slow;
 
     glm::vec3 m_acceleration;
 
     // Software bitmap text renderer
     BitmapText m_bitmapText;
+
+    std::vector<ItemDropEntity>* m_pDropItems = nullptr;
 };
 
 #endif // PLAYER_H_INCLUDED
