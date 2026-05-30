@@ -34,6 +34,7 @@ class Player : public Entity {
     void setDropItems(std::vector<ItemDropEntity>* drops);
 
     void draw(RenderMaster &master, const Camera* camera = nullptr);
+    void renderWeapon();
 
     ItemStack &getHeldItems();
 

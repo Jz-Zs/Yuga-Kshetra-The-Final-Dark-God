@@ -155,4 +155,6 @@ void Application::on_render(bool show_debug_info)
     m_world.renderWorld(m_masterRenderer, m_camera);
 
     m_masterRenderer.finishRender(m_window, m_camera);
+
+    m_player.renderWeapon();
 }

@@ -6,6 +6,7 @@
 #include <iostream>
 #include <sstream>
 
+#include <glad/glad.h>
 #include "../Camera.h"
 #include "../Input/Keyboard.h"
 #include "../Renderer/RenderMaster.h"
@@ -412,35 +413,11 @@ void Player::draw(RenderMaster& master, const Camera* camera)
             qtyUV0, qtyUV1);
     };
 
-    // --- Weapon sprite (with swing animation via position + squash) ---
+    // --- Weapon animation tick ---
     if (m_isSwinging) {
         m_swingTimer += 0.016f;
         if (m_swingTimer >= 0.3f) { m_isSwinging = false; m_swingTimer = 0.0f; }
     }
-
-    auto renderWeapon = [&](float wx, float wy, float ws, bool foreground) {
-        const auto& eqMat2 = m_equipment[m_equipSlot].getMaterial();
-        if (eqMat2.id == Material::ID::Nothing) return;
-        BlockId bId2 = eqMat2.toBlockID();
-        const auto& bd2 = BlockDatabase::get().getData(bId2);
-        auto uv2 = atlas.getTexture(bd2.getBlockData().texTopCoord);
-        auto* dl = foreground ? ImGui::GetForegroundDrawList() : ImGui::GetBackgroundDrawList();
-
-        float ox = 0.0f, oy = 0.0f;
-        if (m_isSwinging) {
-            float t = m_swingTimer / 0.3f;
-            if (t > 1.0f) t = 1.0f;
-            float s = sinf(t * 3.14159265f);
-            ox = -s * 200.0f;
-            oy = s * 120.0f;
-        }
-        dl->AddImage(
-            (ImTextureID)(intptr_t)atlasID,
-            ImVec2(wx + ox, wy + oy),
-            ImVec2(wx + ws + ox, wy + ws + oy),
-            ImVec2(uv2[0], uv2[5]), ImVec2(uv2[2], uv2[3]),
-            IM_COL32(255, 255, 255, 255));
-    };
 
     // --- Backpack + Crafting (B key) ---
     if (m_backpackOpen)
@@ -788,9 +765,6 @@ void Player::draw(RenderMaster& master, const Camera* camera)
         }
     }
 
-    // Weapon: always bottom-right (foreground when no backpack, background when backpack open)
-    renderWeapon(displaySize.x - 600.0f + 90.0f, displaySize.y - 600.0f + 70.0f, 600.0f, !m_backpackOpen);
-
     // --- Drop item icon rendering via ImGui overlay ---
     if (m_pDropItems && !m_pDropItems->empty() && camera)
     {
@@ -878,4 +852,103 @@ void Player::processRKey()
 {
     if (!m_equipKey.isKeyPressed()) return;
     m_equipSlot = (m_equipSlot == 0) ? 1 : 0;
+}
+
+void Player::renderWeapon()
+{
+    const auto& eqM = m_equipment[m_equipSlot].getMaterial();
+    if (eqM.id == Material::ID::Nothing) return;
+
+    auto& atlas = BlockDatabase::get().textureAtlas;
+    GLuint atlasID = atlas.getID();
+    BlockId bId = eqM.toBlockID();
+    auto uv = atlas.getTexture(BlockDatabase::get().getData(bId).getBlockData().texTopCoord);
+    auto displaySize = ImGui::GetIO().DisplaySize;
+
+    // Lazy init shader + VAO
+    static GLuint wpProg = 0, wpVAO = 0, wpVBO = 0;
+    if (wpProg == 0) {
+        const char* vs = R"(#version 460 core
+            layout(location=0) in vec2 aPos;
+            layout(location=1) in vec2 aUV;
+            uniform vec2 uC, uS, uR;
+            out vec2 vUV;
+            void main() {
+                vec2 p = aPos * uS;
+                vec2 r = vec2(p.x*uR.x - p.y*uR.y, p.x*uR.y + p.y*uR.x);
+                gl_Position = vec4(uC + r, 0.0, 1.0);
+                vUV = aUV;
+            })";
+        const char* fs = R"(#version 460 core
+            in vec2 vUV;
+            uniform sampler2D uTex;
+            out vec4 oC;
+            void main() { oC = texture(uTex, vUV); })";
+        auto compileGL = [](GLenum t, const char* s) {
+            GLuint id = glCreateShader(t); glShaderSource(id, 1, &s, 0); glCompileShader(id);
+            GLint ok; glGetShaderiv(id, GL_COMPILE_STATUS, &ok);
+            if (!ok) { char buf[512]; glGetShaderInfoLog(id, 512, 0, buf);
+                fprintf(stderr, "WP shader err: %s\n", buf); }
+            return id;
+        };
+        GLuint sv = compileGL(GL_VERTEX_SHADER, vs);
+        GLuint sf = compileGL(GL_FRAGMENT_SHADER, fs);
+        wpProg = glCreateProgram(); glAttachShader(wpProg, sv); glAttachShader(wpProg, sf);
+        glLinkProgram(wpProg);
+        GLint ok; glGetProgramiv(wpProg, GL_LINK_STATUS, &ok);
+        if (!ok) { char buf[512]; glGetProgramInfoLog(wpProg, 512, 0, buf);
+            fprintf(stderr, "WP link err: %s\n", buf); }
+        glDeleteShader(sv); glDeleteShader(sf);
+        // Quad pivot at bottom-right: aPos range (x in [-2,0], y in [0,2])
+        float q[] = {0,0, 0,0,  0,2, 0,1,  -2,0, 1,0,  0,2, 0,1,  -2,2, 1,1,  -2,0, 1,0};
+        glGenVertexArrays(1, &wpVAO); glGenBuffers(1, &wpVBO);
+        glBindVertexArray(wpVAO); glBindBuffer(GL_ARRAY_BUFFER, wpVBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(q), q, GL_STATIC_DRAW);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 16, (void*)0); glEnableVertexAttribArray(0);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 16, (void*)8); glEnableVertexAttribArray(1);
+    }
+
+    float angle = 0.0f, ox = 0.0f, oy = 0.0f;
+    if (m_isSwinging) {
+        float t = m_swingTimer / 0.3f; if (t > 1.0f) t = 1.0f;
+        float s = sinf(t * 3.14159265f);
+        angle = s * 25.0f; ox = -s * 90.0f; oy = s * 50.0f;
+    }
+    float ws = 600.0f;
+    float wx = displaySize.x - ws + 90.0f + ox;
+    float wy = displaySize.y - ws + 70.0f + oy;
+
+    float hsw = displaySize.x * 0.5f, hsh = displaySize.y * 0.5f;
+    // Pivot at bottom-right (handle)
+    float cx = (wx + ws) / hsw - 1.0f;
+    float cy = 1.0f - (wy + ws) / hsh;
+    float sx = ws * 0.5f / hsw, sy = ws * 0.5f / hsh;
+    float rad = angle * 3.14159265f / 180.0f;
+
+    GLint pp = 0, va = 0, tx = 0;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &pp); glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &va);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &tx);
+
+    glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDisable(GL_DEPTH_TEST);
+    glUseProgram(wpProg);
+    glUniform2f(glGetUniformLocation(wpProg, "uC"), cx, cy);
+    glUniform2f(glGetUniformLocation(wpProg, "uS"), sx, sy);
+    glUniform2f(glGetUniformLocation(wpProg, "uR"), cosf(rad), sinf(rad));
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, atlasID);
+    glUniform1i(glGetUniformLocation(wpProg, "uTex"), 0);
+
+    // UVs match tri order: pivot(BR), topR, botL, topR, topL, botL
+    // X-flipped: bottom-right=(xMin,yMax), top-right=(xMin,yMin), bottom-left=(xMax,yMax), top-left=(xMax,yMin)
+    // Vertices: pos(x,y) + uv(x,y) interleaved, 6 verts
+    float vd[] = {
+        0,0, uv[2],uv[3],  0,2, uv[2],uv[5],  -2,0, uv[0],uv[3],
+        0,2, uv[2],uv[5],  -2,2, uv[0],uv[5],  -2,0, uv[0],uv[3]};
+    glBindVertexArray(wpVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, wpVBO);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vd), vd);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    glBindVertexArray(va); glUseProgram(pp); glBindTexture(GL_TEXTURE_2D, tx);
+    glDisable(GL_BLEND); glEnable(GL_DEPTH_TEST);
 }
