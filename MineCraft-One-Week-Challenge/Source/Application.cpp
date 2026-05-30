@@ -9,6 +9,7 @@
 #include "World/Block/BlockDatabase.h"
 #include "World/Event/PlayerDigEvent.h"
 #include "World/WorldConstants.h"
+#include "Item/CraftingRecipe.h"
 float g_timeElapsed = 0;
 
 Application::Application(sf::Window& window, const Config& config)
@@ -19,6 +20,7 @@ Application::Application(sf::Window& window, const Config& config)
 
 {
     BlockDatabase::get();
+    initCraftingRecipes();
     m_camera.hookEntity(m_player);
 }
 
@@ -30,15 +32,43 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
 {
 
     m_player.handleInput(m_window, keyboard);
-    static sf::Clock timer;
     glm::vec3 lastPosition;
 
-    // Skip block interaction when Alt is held (mouse is in UI mode)
-    if (!sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LAlt))
+    // Mouse state
+    bool leftPressed = sf::Mouse::isButtonPressed(sf::Mouse::Button::Left);
+    bool leftClicked = !m_prevLeftPressed && leftPressed;
+    m_prevLeftPressed = leftPressed;
+    bool rightPressed = sf::Mouse::isButtonPressed(sf::Mouse::Button::Right);
+
+    // Any left click (backpack closed) = swing animation
+    if (leftClicked && !m_player.isBackpackOpen())
+        m_player.triggerSwing();
+
+    // Cooldown for click mining
+    m_player.m_leftClickCooldown -= dt.asSeconds();
+    if (m_player.m_isMining && m_player.m_miningProgress < 1.0f)
     {
-        // Ray is cast as player's 'vision'
+        m_player.m_miningProgress += dt.asSeconds() / 0.1f;
+        if (m_player.m_miningProgress >= 1.0f)
+        {
+            m_player.m_miningProgress = 1.0f;
+            m_player.m_isMining = false;
+            if (m_player.m_miningTarget.y > -999)
+            {
+                m_world.addEvent<PlayerDigEvent>(sf::Mouse::Button::Left,
+                    glm::vec3(m_player.m_miningTarget.x + 0.5f,
+                              m_player.m_miningTarget.y + 0.5f,
+                              m_player.m_miningTarget.z + 0.5f), m_player);
+                m_player.m_miningTarget = {0, -999, 0};
+            }
+        }
+    }
+
+    // Skip block interaction when Alt or backpack is open
+    if (!sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LAlt) && !m_player.isBackpackOpen())
+    {
         for (Ray ray({m_player.position.x, m_player.position.y + 0.6f, m_player.position.z},
-                     m_player.rotation); // Corrected for camera offset
+                     m_player.rotation);
              ray.getLength() < 6; ray.step(0.05f))
         {
             int x = static_cast<int>(ray.getEnd().x);
@@ -50,23 +80,25 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
 
             if (id != BlockId::Air && id != BlockId::Water)
             {
-                if (timer.getElapsedTime().asSeconds() > 0.2)
+                // Left click: instant mine (0.1s cooldown + progress animation)
+                if (leftClicked && m_player.m_leftClickCooldown <= 0.0f)
                 {
-                    if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left))
-                    {
-                        timer.restart();
-                        m_world.addEvent<PlayerDigEvent>(sf::Mouse::Button::Left, ray.getEnd(),
-                                                         m_player);
-                        break;
-                    }
-                    else if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Right))
-                    {
-                        timer.restart();
-                        m_world.addEvent<PlayerDigEvent>(sf::Mouse::Button::Right, lastPosition,
-                                                         m_player);
-                        break;
-                    }
+                    m_player.m_leftClickCooldown = 0.1f;
+                    m_player.m_isMining = true;
+                    m_player.m_miningProgress = 0.0f;
+                    m_player.m_miningTarget = {x, y, z};
+                    break;
                 }
+
+                // Right-click: place block
+                if (rightPressed && m_rightClickTimer.getElapsedTime().asSeconds() > 0.2f)
+                {
+                    m_rightClickTimer.restart();
+                    m_world.addEvent<PlayerDigEvent>(sf::Mouse::Button::Right, lastPosition,
+                                                     m_player);
+                    break;
+                }
+                lastPosition = ray.getEnd();
             }
             lastPosition = ray.getEnd();
         }

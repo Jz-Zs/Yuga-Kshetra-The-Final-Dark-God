@@ -13,6 +13,7 @@ class Camera;
 
 #include "../Input/ToggleKey.h"
 #include "../Item/ItemStack.h"
+#include "../Item/CraftingRecipe.h"
 #include "../Entity/ItemDropEntity.h"
 #include "../Util/BitmapText.h"
 
@@ -24,7 +25,7 @@ class Player : public Entity {
   public:
     Player();
 
-    void handleInput(const sf::Window& window, const Keyboard& keyboard);
+    void handleInput(sf::Window& window, const Keyboard& keyboard);
 
     void update(float dt, World &wolrd);
     void collide(World &world, const glm::vec3 &vel, float dt);
@@ -36,11 +37,34 @@ class Player : public Entity {
 
     ItemStack &getHeldItems();
 
+    // 装备系统 (独立于快捷栏，左键攻击用装备，右键放置用快捷栏)
+    ItemStack m_equipment[2] = {ItemStack(Material::NOTHING, 0), ItemStack(Material::NOTHING, 0)};
+    int m_equipSlot = 0; // 0=主手, 1=副手
+
+    // 合成系统
+    ItemStack m_craftGrid[9];
+    const CraftingRecipe* m_currentRecipe = nullptr;
+
+    // 战斗/挖掘 (Application 需要直接访问)
+    float m_leftClickCooldown = 0.0f;
+    float m_miningProgress = 0.0f;
+    bool m_isMining = false;
+    glm::ivec3 m_miningTarget{0, -999, 0};
+
+    // 输入处理
+    void processRKey();
+
+    float getMiningProgress() const { return m_miningProgress; }
+    bool isMining() const { return m_isMining; }
+    bool isBackpackOpen() const { return m_backpackOpen; }
+    bool isMouseLockedForUI() const { return m_mouseLocked && !m_backpackOpen; }
+    void triggerSwing() { m_isSwinging = true; m_swingTimer = 0.0f; }
+
   private:
     void jump();
 
     void keyboardInput(const Keyboard& keyboard);
-    void mouseInput(const sf::Window &window);
+    void mouseInput(sf::Window& window);
     bool m_isOnGround = false;
     bool m_isFlying = false;
     bool m_isSneak = false;
@@ -64,6 +88,17 @@ class Player : public Entity {
     ToggleKey m_slow;
 
     glm::vec3 m_acceleration;
+
+    // 武器动画
+    float m_swingAngle = 0.0f;
+    float m_swingTimer = 0.0f;
+    bool m_isSwinging = false;
+
+    // 装备切换键
+    ToggleKey m_equipKey;
+
+    // 鼠标锁定状态 (准星显隐)
+    bool m_mouseLocked = true;
 
     // Software bitmap text renderer
     BitmapText m_bitmapText;

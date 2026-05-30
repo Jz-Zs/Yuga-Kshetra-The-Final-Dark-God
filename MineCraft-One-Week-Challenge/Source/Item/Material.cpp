@@ -15,6 +15,9 @@ const Material Material::ROSE(ID::Rose, 99, true, "Rose");
 const Material Material::TALL_GRASS(ID::TallGrass, 99, true, "Tall Grass");
 const Material Material::DEAD_SHRUB(ID::DeadShrub, 99, true, "Dead Shrub");
 
+const Material Material::STICK(ID::Stick, 99, false, "Stick");
+const Material Material::WOODEN_SWORD(ID::WoodenSword, 1, false, "Wooden Sword");
+
 Material::Material(Material::ID id, int maxStack, bool isBlock,
                    std::string &&name)
     : id(id)
@@ -59,6 +62,12 @@ BlockId Material::toBlockID() const
 
         case DeadShrub:
             return BlockId::DeadShrub;
+
+        case Stick:
+            return BlockId::Stick;
+
+        case WoodenSword:
+            return BlockId::WoodenSword;
 
         default:
             return BlockId::NUM_TYPES;

@@ -19,6 +19,8 @@ enum class BlockId : Block_t {
     Rose = 9,
     TallGrass = 10,
     DeadShrub = 11,
+    Stick = 12,
+    WoodenSword = 13,
 
     NUM_TYPES
 };

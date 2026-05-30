@@ -25,12 +25,19 @@ Player::Player()
     , m_num5(sf::Keyboard::Key::Num5)
     , m_backpackKey(sf::Keyboard::Key::B)
     , m_slow(sf::Keyboard::Key::LShift)
+    , m_equipKey(sf::Keyboard::Key::R)
     , m_acceleration(glm::vec3(0.f))
 {
 
     for (int i = 0; i < 20; i++)
     {
         m_items.emplace_back(Material::NOTHING, 0);
+    }
+    m_items[0] = ItemStack(Material::WOODEN_SWORD, 1);  // 开局测试用
+    m_equipment[0] = ItemStack(Material::WOODEN_SWORD, 1);  // 主手装备
+    for (int i = 0; i < 9; i++)
+    {
+        m_craftGrid[i] = ItemStack(Material::NOTHING, 0);
     }
 }
 
@@ -71,10 +78,12 @@ ItemStack& Player::getHeldItems()
     return m_items[m_heldItem];
 }
 
-void Player::handleInput(const sf::Window& window, const Keyboard& keyboard)
+void Player::handleInput(sf::Window& window, const Keyboard& keyboard)
 {
     keyboardInput(keyboard);
     mouseInput(window);
+
+    processRKey();
 
     if (m_itemDown.isKeyPressed())
     {
@@ -98,26 +107,11 @@ void Player::handleInput(const sf::Window& window, const Keyboard& keyboard)
         m_isFlying = !m_isFlying;
     }
 
-    if (m_num1.isKeyPressed())
-    {
-        m_heldItem = 0;
-    }
-    if (m_num2.isKeyPressed())
-    {
-        m_heldItem = 1;
-    }
-    if (m_num3.isKeyPressed())
-    {
-        m_heldItem = 2;
-    }
-    if (m_num4.isKeyPressed())
-    {
-        m_heldItem = 3;
-    }
-    if (m_num5.isKeyPressed())
-    {
-        m_heldItem = 4;
-    }
+    if (m_num1.isKeyPressed()) { m_heldItem = 0; }
+    if (m_num2.isKeyPressed()) { m_heldItem = 1; }
+    if (m_num3.isKeyPressed()) { m_heldItem = 2; }
+    if (m_num4.isKeyPressed()) { m_heldItem = 3; }
+    if (m_num5.isKeyPressed()) { m_heldItem = 4; }
     if (m_slow.isKeyPressed())
     {
         m_isSneak = !m_isSneak;
@@ -251,8 +245,11 @@ void Player::keyboardInput(const Keyboard& keyboard)
     }
 }
 
-void Player::mouseInput(const sf::Window& window)
+void Player::mouseInput(sf::Window& window)
 {
+    m_mouseLocked = !sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LAlt) && !m_backpackOpen;
+    window.setMouseCursorGrabbed(m_mouseLocked && !m_backpackOpen);
+
     static bool useMouse = true;
     static ToggleKey useMouseKey(sf::Keyboard::Key::L);
 
@@ -332,12 +329,11 @@ void Player::draw(RenderMaster& master, const Camera* camera)
                          ImGuiWindowFlags_NoBringToFrontOnFocus;
 
     auto displaySize = ImGui::GetIO().DisplaySize;
-    // Content size: grid + surrounding padding (no extra frame allowance)
-    float contentW = cols * (slotSize + padding) + padding;
+    float hotbarW = cols * (slotSize + padding) + padding;
     float hotbarContentH = 1 * (slotSize + padding) + padding;
 
     // Hotbar: bottom-center of screen
-    float hotbarX = (displaySize.x - contentW) * 0.5f;
+    float hotbarX = (displaySize.x - hotbarW) * 0.5f;
     float hotbarY = displaySize.y - hotbarContentH - 10.0f;
 
     // --- Collect quantities for BitmapText rendering (batch all into one texture) ---
@@ -416,28 +412,192 @@ void Player::draw(RenderMaster& master, const Camera* camera)
             qtyUV0, qtyUV1);
     };
 
-    // --- Backpack window (3×5 grid, slots 5-19) ---
+    // --- Weapon sprite (with swing animation via position + squash) ---
+    if (m_isSwinging) {
+        m_swingTimer += 0.016f;
+        if (m_swingTimer >= 0.3f) { m_isSwinging = false; m_swingTimer = 0.0f; }
+    }
+
+    auto renderWeapon = [&](float wx, float wy, float ws, bool foreground) {
+        const auto& eqMat2 = m_equipment[m_equipSlot].getMaterial();
+        if (eqMat2.id == Material::ID::Nothing) return;
+        BlockId bId2 = eqMat2.toBlockID();
+        const auto& bd2 = BlockDatabase::get().getData(bId2);
+        auto uv2 = atlas.getTexture(bd2.getBlockData().texTopCoord);
+        auto* dl = foreground ? ImGui::GetForegroundDrawList() : ImGui::GetBackgroundDrawList();
+
+        float ox = 0.0f, oy = 0.0f;
+        if (m_isSwinging) {
+            float t = m_swingTimer / 0.3f;
+            if (t > 1.0f) t = 1.0f;
+            float s = sinf(t * 3.14159265f);
+            ox = -s * 200.0f;
+            oy = s * 120.0f;
+        }
+        dl->AddImage(
+            (ImTextureID)(intptr_t)atlasID,
+            ImVec2(wx + ox, wy + oy),
+            ImVec2(wx + ws + ox, wy + ws + oy),
+            ImVec2(uv2[0], uv2[5]), ImVec2(uv2[2], uv2[3]),
+            IM_COL32(255, 255, 255, 255));
+    };
+
+    // --- Backpack + Crafting (B key) ---
     if (m_backpackOpen)
     {
-        const int bpRows = 3; // slots 5-19
+        const int craftRows = 3, craftCols = 3;
+        float craftContentW = craftCols * (slotSize + padding) + padding + slotSize + padding + 56.0f;
+        float craftContentH = craftRows * (slotSize + padding) + padding;
+        const int bpRows = 3;
         float bpContentH = bpRows * (slotSize + padding) + padding;
-        float bpX = (displaySize.x - contentW) * 0.5f;
-        float bpY = hotbarY - bpContentH - 6.0f;
 
-        ImGui::SetNextWindowPos(ImVec2(bpX, bpY), ImGuiCond_Always);
-        ImGui::SetNextWindowSize(ImVec2(contentW, bpContentH), ImGuiCond_Always);
+        // Backpack: above hotbar
+        float bpX = (displaySize.x - hotbarW) * 0.5f;
+        float bpY = hotbarY - bpContentH - 6.0f;
+        // Crafting: above backpack
+        float craftWinX = (displaySize.x - craftContentW) * 0.5f;
+        float craftWinY = bpY - craftContentH - 6.0f;
+
+        // --- Crafting window (top) ---
+        ImGui::SetNextWindowPos(ImVec2(craftWinX, craftWinY), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(craftContentW, craftContentH), ImGuiCond_Always);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-        if (ImGui::Begin("背包", nullptr, winFlags))
+        if (ImGui::Begin("Crafting", nullptr, winFlags))
+        {
+            ImVec2 winPos = ImGui::GetWindowPos();
+            auto* wdl = ImGui::GetWindowDrawList();
+
+            // 3×3 grid
+            for (int row = 0; row < craftRows; row++)
+                for (int col = 0; col < craftCols; col++)
+                {
+                    int slotIdx = row * craftCols + col;
+                    float x = padding + col * (slotSize + padding);
+                    float y = padding + row * (slotSize + padding);
+                    ImGui::SetCursorPos(ImVec2(x, y));
+                    ImGui::PushID(100 + slotIdx);
+                    ImVec2 p0 = ImGui::GetCursorScreenPos();
+                    ImGui::Dummy(ImVec2(slotSize, slotSize));
+                    ImVec2 p1(p0.x + slotSize, p0.y + slotSize);
+                    wdl->AddRectFilled(p0, p1, IM_COL32(60, 60, 60, 200));
+                    wdl->AddRect(p0, p1, IM_COL32(180, 180, 180, 255));
+
+                    const auto& gmat = m_craftGrid[slotIdx].getMaterial();
+                    if (gmat.id != Material::ID::Nothing)
+                    {
+                        BlockId bId = gmat.toBlockID();
+                        const auto& bd = BlockDatabase::get().getData(bId);
+                        auto uv = atlas.getTexture(bd.getBlockData().texTopCoord);
+                        wdl->AddImage((ImTextureID)(intptr_t)atlasID,
+                            ImVec2(p0.x + texPad, p0.y + texPad),
+                            ImVec2(p1.x - texPad, p1.y - texPad),
+                            ImVec2(uv[2], uv[5]), ImVec2(uv[0], uv[3]));
+                        int n = m_craftGrid[slotIdx].getNumInStack();
+                        if (n > 1) {
+                            char buf[8];
+                            snprintf(buf, 8, "%d", n);
+                            wdl->AddText(ImVec2(p1.x - 16, p1.y - 16), IM_COL32(255,255,255,255), buf);
+                        }
+                    }
+
+                    if (ImGui::BeginDragDropTarget())
+                    {
+                        const ImGuiPayload* pl = ImGui::AcceptDragDropPayload("INV_SLOT");
+                        if (pl) {
+                            int src = *(const int*)pl->Data;
+                            const auto& sm = m_items[src].getMaterial();
+                            if (sm.id != Material::ID::Nothing) {
+                                if (m_craftGrid[slotIdx].getMaterial().id == Material::ID::Nothing)
+                                    m_craftGrid[slotIdx] = ItemStack(sm, 1);
+                                else m_craftGrid[slotIdx].add(1);
+                                m_items[src].remove();
+                                m_currentRecipe = findMatchingRecipe(m_craftGrid);
+                            }
+                        }
+                        ImGui::EndDragDropTarget();
+                    }
+                    if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                        if (ImGui::GetIO().KeyShift) {
+                            // Shift+Click: quick-add from hotbar to this grid slot
+                            const auto& hm = m_items[m_heldItem].getMaterial();
+                            if (hm.id != Material::ID::Nothing) {
+                                if (m_craftGrid[slotIdx].getMaterial().id == Material::ID::Nothing)
+                                    m_craftGrid[slotIdx] = ItemStack(hm, 1);
+                                else if (m_craftGrid[slotIdx].getMaterial().id == hm.id)
+                                    m_craftGrid[slotIdx].add(1);
+                                m_items[m_heldItem].remove();
+                                m_currentRecipe = findMatchingRecipe(m_craftGrid);
+                            }
+                        } else {
+                            const auto& gm = m_craftGrid[slotIdx].getMaterial();
+                            if (gm.id != Material::ID::Nothing && addItem(gm))
+                            { m_craftGrid[slotIdx].remove(); m_currentRecipe = findMatchingRecipe(m_craftGrid); }
+                        }
+                    }
+                    ImGui::PopID();
+                }
+
+            // Arrow →
+            {
+                float ax = winPos.x + padding + craftCols * (slotSize + padding) + 12.0f;
+                float ay = winPos.y + padding + 1 * (slotSize + padding) + slotSize * 0.5f;
+                float len = 20.0f;
+                ImU32 ac = IM_COL32(255, 255, 255, 240);
+                // shaft
+                wdl->AddLine(ImVec2(ax, ay), ImVec2(ax + len, ay), ac, 4.0f);
+                // head
+                wdl->AddLine(ImVec2(ax + len, ay), ImVec2(ax + len - 9, ay - 8), ac, 4.0f);
+                wdl->AddLine(ImVec2(ax + len, ay), ImVec2(ax + len - 9, ay + 8), ac, 4.0f);
+            }
+
+            // Result slot
+            {
+                float rx = padding + craftCols * (slotSize + padding) + 50.0f;
+                float ry = padding + 1 * (slotSize + padding);
+                ImGui::SetCursorPos(ImVec2(rx, ry));
+                ImGui::PushID(200);
+                ImVec2 rp0 = ImGui::GetCursorScreenPos();
+                ImGui::Dummy(ImVec2(slotSize, slotSize));
+                ImVec2 rp1(rp0.x + slotSize, rp0.y + slotSize);
+                wdl->AddRectFilled(rp0, rp1, IM_COL32(50, 50, 50, 200));
+                wdl->AddRect(rp0, rp1, IM_COL32(200, 200, 100, 255));
+
+                if (m_currentRecipe) {
+                    BlockId bId = m_currentRecipe->output->toBlockID();
+                    const auto& bd = BlockDatabase::get().getData(bId);
+                    auto uv = atlas.getTexture(bd.getBlockData().texTopCoord);
+                    wdl->AddImage((ImTextureID)(intptr_t)atlasID,
+                        ImVec2(rp0.x + texPad, rp0.y + texPad),
+                        ImVec2(rp1.x - texPad, rp1.y - texPad),
+                        ImVec2(uv[2], uv[5]), ImVec2(uv[0], uv[3]));
+                }
+                if (m_currentRecipe && ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                    const Material& outMat = *m_currentRecipe->output;
+                    if (addItem(outMat)) {
+                        for (int i = 0; i < 9; i++)
+                            if (m_currentRecipe->pattern[i] != nullptr) m_craftGrid[i].remove();
+                        m_currentRecipe = findMatchingRecipe(m_craftGrid);
+                    }
+                }
+                ImGui::PopID();
+            }
+        }
+        ImGui::End();
+        ImGui::PopStyleVar();
+
+        // --- Backpack window (below crafting) ---
+        ImGui::SetNextWindowPos(ImVec2(bpX, bpY), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(hotbarW, bpContentH), ImGuiCond_Always);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+        if (ImGui::Begin("Backpack", nullptr, winFlags))
         {
             for (int bpRow = 0; bpRow < bpRows; bpRow++)
-            {
                 for (int col = 0; col < cols; col++)
                 {
-                    int slotIndex = 5 + bpRow * cols + col; // slots 5-19
+                    int slotIndex = 5 + bpRow * cols + col;
                     float x = padding + col * (slotSize + padding);
                     float y = padding + bpRow * (slotSize + padding);
                     ImGui::SetCursorPos(ImVec2(x, y));
-
                     ImGui::PushID(slotIndex);
                     ImVec2 p0 = ImGui::GetCursorScreenPos();
                     ImGui::Dummy(ImVec2(slotSize, slotSize));
@@ -445,41 +605,32 @@ void Player::draw(RenderMaster& master, const Camera* camera)
                     drawSlot(slotIndex, p0, p1, false);
                     drawQuantity(slotIndex, p1);
 
-                    // Drag-and-drop
                     const auto& mat = m_items[slotIndex].getMaterial();
-                    if (mat.id != Material::ID::Nothing &&
-                        ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID))
-                    {
+                    if (mat.id != Material::ID::Nothing && ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
                         ImGui::SetDragDropPayload("INV_SLOT", &slotIndex, sizeof(int));
                         BlockId bId = mat.toBlockID();
                         const auto& bd = BlockDatabase::get().getData(bId);
                         auto uv = atlas.getTexture(bd.getBlockData().texTopCoord);
-                        ImGui::Image((ImTextureID)(intptr_t)atlasID,
-                                     ImVec2(slotSize * 0.7f, slotSize * 0.7f),
+                        ImGui::Image((ImTextureID)(intptr_t)atlasID, ImVec2(slotSize * 0.7f, slotSize * 0.7f),
                                      ImVec2(uv[2], uv[5]), ImVec2(uv[0], uv[3]));
                         ImGui::EndDragDropSource();
                     }
-                    if (ImGui::BeginDragDropTarget())
-                    {
+                    if (ImGui::BeginDragDropTarget()) {
                         const ImGuiPayload* pl = ImGui::AcceptDragDropPayload("INV_SLOT");
-                        if (pl)
-                        {
-                            int src = *(const int*)pl->Data;
-                            std::swap(m_items[src], m_items[slotIndex]);
-                        }
+                        if (pl) { int src = *(const int*)pl->Data; std::swap(m_items[src], m_items[slotIndex]); }
                         ImGui::EndDragDropTarget();
                     }
                     ImGui::PopID();
                 }
-            }
         }
         ImGui::End();
         ImGui::PopStyleVar();
+
     }
 
     // --- Hotbar window (1×5, slots 0-4, always visible) ---
     ImGui::SetNextWindowPos(ImVec2(hotbarX, hotbarY), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(contentW, hotbarContentH), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(hotbarW, hotbarContentH), ImGuiCond_Always);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     if (ImGui::Begin("Hotbar", nullptr, winFlags))
     {
@@ -526,6 +677,119 @@ void Player::draw(RenderMaster& master, const Camera* camera)
     }
     ImGui::End();
     ImGui::PopStyleVar();
+
+    // --- Equipment window (2 slots, left of hotbar) ---
+    {
+        float eqSlots = 2;
+        float eqContentW = eqSlots * (slotSize + padding) + padding;
+        float eqContentH = 1 * (slotSize + padding) + padding;
+        float eqY = hotbarY;
+        float eqX = hotbarX - eqContentW - 6.0f;
+
+        ImGui::SetNextWindowPos(ImVec2(eqX, eqY), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(eqContentW, eqContentH), ImGuiCond_Always);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+        if (ImGui::Begin("Equipment", nullptr, winFlags))
+        {
+            auto* edl = ImGui::GetWindowDrawList();
+            for (int i = 0; i < 2; i++)
+            {
+                float x = padding + i * (slotSize + padding);
+                float y = padding;
+                ImGui::SetCursorPos(ImVec2(x, y));
+
+                ImGui::PushID(300 + i);
+                ImVec2 p0 = ImGui::GetCursorScreenPos();
+                ImGui::Dummy(ImVec2(slotSize, slotSize));
+                ImVec2 p1(p0.x + slotSize, p0.y + slotSize);
+
+                ImU32 bg = (m_equipSlot == i)
+                    ? IM_COL32(255, 215, 0, 60) : IM_COL32(50, 50, 50, 200);
+                edl->AddRectFilled(p0, p1, bg);
+                edl->AddRect(p0, p1, IM_COL32(180, 180, 180, 255));
+
+                const auto& eqMat = m_equipment[i].getMaterial();
+                if (eqMat.id != Material::ID::Nothing)
+                {
+                    BlockId bId = eqMat.toBlockID();
+                    const auto& bd = BlockDatabase::get().getData(bId);
+                    auto uv = atlas.getTexture(bd.getBlockData().texTopCoord);
+                    edl->AddImage((ImTextureID)(intptr_t)atlasID,
+                        ImVec2(p0.x + texPad, p0.y + texPad),
+                        ImVec2(p1.x - texPad, p1.y - texPad),
+                        ImVec2(uv[2], uv[5]), ImVec2(uv[0], uv[3]));
+                }
+
+                // Drop target: drag from inventory
+                if (ImGui::BeginDragDropTarget())
+                {
+                    const ImGuiPayload* pl = ImGui::AcceptDragDropPayload("INV_SLOT");
+                    if (pl)
+                    {
+                        int src = *(const int*)pl->Data;
+                        const auto& srcMat = m_items[src].getMaterial();
+                        if (srcMat.id != Material::ID::Nothing)
+                        {
+                            const auto& oldMat = m_equipment[i].getMaterial();
+                            if (oldMat.id != Material::ID::Nothing)
+                                addItem(oldMat);
+                            m_equipment[i] = ItemStack(srcMat, 1);
+                            m_items[src].remove();
+                        }
+                    }
+                    ImGui::EndDragDropTarget();
+                }
+
+                // Left-click → return to inventory, switch focus
+                if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                {
+                    const auto& eMat = m_equipment[i].getMaterial();
+                    if (eMat.id != Material::ID::Nothing)
+                    {
+                        addItem(eMat);
+                        m_equipment[i] = ItemStack(Material::NOTHING, 0);
+                    }
+                    m_equipSlot = i;
+                }
+                ImGui::PopID();
+            }
+        }
+        ImGui::End();
+        ImGui::PopStyleVar();
+    }
+
+    // --- Crosshair + Mining Progress Ring ---
+    if (m_mouseLocked && !m_backpackOpen)
+    {
+        ImVec2 center(displaySize.x * 0.5f, displaySize.y * 0.5f);
+        auto* fg = ImGui::GetForegroundDrawList();
+
+        fg->AddLine(ImVec2(center.x - 8, center.y), ImVec2(center.x + 8, center.y),
+                    IM_COL32(255, 255, 255, 200), 1.5f);
+        fg->AddLine(ImVec2(center.x, center.y - 8), ImVec2(center.x, center.y + 8),
+                    IM_COL32(255, 255, 255, 200), 1.5f);
+
+        if (m_isMining && m_miningProgress > 0.0f)
+        {
+            float r = 16.0f, pi = 3.14159265f;
+            int segs = 36;
+            float full = m_miningProgress * 2.0f * pi;
+            float startAngle = -pi / 2.0f;
+            ImVec2 prev(center.x + r * cosf(startAngle),
+                        center.y + r * sinf(startAngle));
+            for (int i = 1; i <= segs; i++)
+            {
+                float a = (float)i / (float)segs * full;
+                ImVec2 pt(center.x + r * cosf(startAngle + a),
+                          center.y + r * sinf(startAngle + a));
+                fg->AddLine(prev, pt, IM_COL32(255, 255, 255, 220), 4.0f);
+                prev = pt;
+            }
+        }
+    }
+
+    // Weapon: always bottom-right (foreground when no backpack, background when backpack open)
+    renderWeapon(displaySize.x - 600.0f + 90.0f, displaySize.y - 600.0f + 70.0f, 600.0f, !m_backpackOpen);
 
     // --- Drop item icon rendering via ImGui overlay ---
     if (m_pDropItems && !m_pDropItems->empty() && camera)
@@ -608,4 +872,10 @@ void Player::jump()
     {
         m_acceleration.y += speed * 3;
     }
+}
+
+void Player::processRKey()
+{
+    if (!m_equipKey.isKeyPressed()) return;
+    m_equipSlot = (m_equipSlot == 0) ? 1 : 0;
 }

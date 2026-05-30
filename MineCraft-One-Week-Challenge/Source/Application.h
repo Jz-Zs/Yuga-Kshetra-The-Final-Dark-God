@@ -30,4 +30,6 @@ class Application
     Camera m_camera;
     Player m_player;
     World m_world;
+    bool m_prevLeftPressed = false;
+    sf::Clock m_rightClickTimer;
 };

@@ -18,6 +18,9 @@ BlockDatabase::BlockDatabase()
     m_blocks[(int)BlockId::Rose] = std::make_unique<DefaultBlock>("Rose");
     m_blocks[(int)BlockId::DeadShrub] =
         std::make_unique<DefaultBlock>("DeadShrub");
+    m_blocks[(int)BlockId::Stick] = std::make_unique<DefaultBlock>("Stick");
+    m_blocks[(int)BlockId::WoodenSword] =
+        std::make_unique<DefaultBlock>("WoodenSword");
 }
 
 BlockDatabase &BlockDatabase::get()
