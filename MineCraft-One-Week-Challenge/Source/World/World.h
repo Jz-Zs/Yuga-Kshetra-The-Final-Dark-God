@@ -12,6 +12,7 @@
 #include "Chunk/ChunkManager.h"
 
 #include "../Entity/ItemDropEntity.h"
+#include "../Entity/PigmanEntity.h"
 
 #include "Event/IWorldEvent.h"
 
@@ -43,6 +44,10 @@ class World : public NonCopyable {
     void updateDrops(float dt);
     std::vector<ItemDropEntity>& getDropItems();
 
+    void spawnPigman(const Player& player, float minDist);
+    void updateEntities(float dt, Player& player);
+    std::vector<PigmanEntity>& getPigmen() { return m_pigmen; }
+
     static VectorXZ getBlockXZ(int x, int z);
     static VectorXZ getChunkXZ(int x, int z);
 
@@ -62,6 +67,7 @@ class World : public NonCopyable {
 
     std::vector<std::unique_ptr<IWorldEvent>> m_events;
     std::vector<ItemDropEntity> m_dropItems;
+    std::vector<PigmanEntity> m_pigmen;
     std::unordered_map<sf::Vector3i, ChunkSection *> m_chunkUpdates;
 
     std::atomic<bool> m_isRunning{true};

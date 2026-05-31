@@ -581,6 +581,9 @@ void Player::draw(RenderMaster& master, const Camera* camera)
                     ImVec2 p1(p0.x + slotSize, p0.y + slotSize);
                     drawSlot(slotIndex, p0, p1, false);
                     drawQuantity(slotIndex, p1);
+                    // Yellow border for safe slots (17, 18, 19)
+                    if (slotIndex >= 17)
+                        ImGui::GetWindowDrawList()->AddRect(p0, p1, IM_COL32(255, 215, 0, 255), 0.0f, 0, 2.0f);
 
                     const auto& mat = m_items[slotIndex].getMaterial();
                     if (mat.id != Material::ID::Nothing && ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
@@ -804,6 +807,7 @@ void Player::draw(RenderMaster& master, const Camera* camera)
             float iconSize = 32.0f * (0.5f + 0.5f * scale);
 
             BlockId bId = drop.material->toBlockID();
+            if (bId == BlockId::NUM_TYPES) continue; // skip non-block items (e.g. RawMeat)
             const auto& blockData = BlockDatabase::get().getData(bId);
             auto uv = atlas.getTexture(blockData.getBlockData().texTopCoord);
 
@@ -951,4 +955,39 @@ void Player::renderWeapon()
 
     glBindVertexArray(va); glUseProgram(pp); glBindTexture(GL_TEXTURE_2D, tx);
     glDisable(GL_BLEND); glEnable(GL_DEPTH_TEST);
+}
+
+int Player::getAttackPower() const
+{
+    int weaponAtk = 0;
+    const auto& eqM = m_equipment[m_equipSlot].getMaterial();
+    if (eqM.id == Material::ID::WoodenSword) {
+        weaponAtk = 10;
+    }
+    return m_baseAttack + weaponAtk;
+}
+
+void Player::takeDamage(int amount, glm::vec3 knockbackDir)
+{
+    if (m_isDead) return;
+
+    m_hp -= amount;
+    if (m_hp < 0) m_hp = 0;
+
+    // Knockback
+    velocity.x += knockbackDir.x * 6.0f;
+    velocity.z += knockbackDir.z * 6.0f;
+    if (!m_isFlying) velocity.y += 4.0f;
+
+    if (m_hp <= 0) {
+        m_isDead = true;
+        // Clear all except last 3 backpack slots (17, 18, 19)
+        for (int i = 0; i < 17; i++) {
+            m_items[i] = ItemStack(Material::NOTHING, 0);
+        }
+        for (int i = 0; i < 2; i++) {
+            m_equipment[i] = ItemStack(Material::NOTHING, 0);
+        }
+        std::cout << "Player died! HP=0\n";
+    }
 }

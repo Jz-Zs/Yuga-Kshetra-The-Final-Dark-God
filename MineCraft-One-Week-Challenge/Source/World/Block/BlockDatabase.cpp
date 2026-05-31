@@ -21,6 +21,8 @@ BlockDatabase::BlockDatabase()
     m_blocks[(int)BlockId::Stick] = std::make_unique<DefaultBlock>("Stick");
     m_blocks[(int)BlockId::WoodenSword] =
         std::make_unique<DefaultBlock>("WoodenSword");
+    m_blocks[(int)BlockId::RawMeat] =
+        std::make_unique<DefaultBlock>("RawMeat");
 }
 
 BlockDatabase &BlockDatabase::get()
@@ -36,5 +38,7 @@ const BlockType &BlockDatabase::getBlock(BlockId id) const
 
 const BlockData &BlockDatabase::getData(BlockId id) const
 {
-    return m_blocks[(int)id]->getData();
+    int idx = (int)id;
+    if (idx < 0 || idx >= (int)m_blocks.size()) idx = 0; // fallback to Air
+    return m_blocks[idx]->getData();
 }

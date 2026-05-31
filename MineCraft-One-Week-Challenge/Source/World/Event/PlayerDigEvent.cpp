@@ -41,15 +41,13 @@ void PlayerDigEvent::dig(World &world)
             auto &stack = m_pPlayer->getHeldItems();
             auto &material = stack.getMaterial();
 
-            if (material.id == Material::ID::Nothing) {
+            if (material.id == Material::ID::Nothing || !material.isBlock) {
                 return;
             }
-            else {
-                stack.remove();
-                world.updateChunk(x, y, z);
-                world.setBlock(x, y, z, material.toBlockID());
-                break;
-            }
+            stack.remove();
+            world.updateChunk(x, y, z);
+            world.setBlock(x, y, z, material.toBlockID());
+            break;
         }
         default:
             break;

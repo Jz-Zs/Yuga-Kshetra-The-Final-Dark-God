@@ -156,6 +156,7 @@ GLuint BitmapText::update(const std::vector<std::string>& lines,
     int y = 4;
     for (auto& line : lines) {
         renderUTF8(m_buffer.data(), texWidth, texHeight, 4, y, line);
+        renderUTF8(m_buffer.data(), texWidth, texHeight, 5, y, line); // bold: +1px offset
         y += (int)(m_fontSize * 1.1f);
     }
 

@@ -67,6 +67,8 @@ add_executable(${PROJECT_NAME}
     Source/Renderer/ChunkRenderer.cpp
     Source/Renderer/SkyboxRenderer.cpp
     Source/Renderer/FloraRenderer.cpp
+    Source/Renderer/EntityRenderer.cpp
+    Source/Entity/PigmanAI.cpp
     Source/Model.cpp
     Source/Util/Profiler.cpp
     Source/GUI.cpp

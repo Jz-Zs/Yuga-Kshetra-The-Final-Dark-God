@@ -61,6 +61,16 @@ class Player : public Entity {
     bool isMouseLockedForUI() const { return m_mouseLocked && !m_backpackOpen; }
     void triggerSwing() { m_isSwinging = true; m_swingTimer = 0.0f; }
 
+    // Combat
+    int m_hp = 100;
+    int m_maxHp = 100;
+    int m_baseAttack = 2;
+    int getAttackPower() const;
+    void takeDamage(int amount, glm::vec3 knockbackDir);
+
+    // Death
+    bool m_isDead = false;
+
   private:
     void jump();
 

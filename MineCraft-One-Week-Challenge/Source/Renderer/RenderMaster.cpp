@@ -38,6 +38,7 @@ void RenderMaster::finishRender(sf::Window &window, const Camera &camera)
     m_chunkRenderer.render(camera);
     m_waterRenderer.render(camera);
     m_floraRenderer.render(camera);
+    m_entityRenderer.render(camera);
 
     if (m_drawBox) {
         glDisable(GL_CULL_FACE);

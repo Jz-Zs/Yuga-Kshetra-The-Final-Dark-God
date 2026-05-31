@@ -1,4 +1,5 @@
 #include "World.h"
+#include "../Entity/PigmanAI.h"
 
 #include <algorithm>
 #include <future>
@@ -294,4 +295,216 @@ void World::updateDrops(float dt)
 std::vector<ItemDropEntity>& World::getDropItems()
 {
     return m_dropItems;
+}
+
+void World::spawnPigman(const Player& player, float minDist)
+{
+    PigmanEntity e;
+    glm::vec3 spawnPos;
+    bool found = false;
+
+    for (int tries = 0; tries < 50; tries++) {
+        float x = (float)(std::rand() % (MVP_WORLD_SIZE_X - 10) + 5);
+        float z = (float)(std::rand() % (MVP_WORLD_SIZE_Z - 10) + 5);
+
+        if (glm::distance(glm::vec2(x, z),
+                          glm::vec2(player.position.x, player.position.z)) < minDist)
+            continue;
+
+        // Find ground
+        int gx = (int)x, gz = (int)z;
+        int gy = -1;
+        for (int y = MVP_WORLD_HEIGHT - 1; y > 0; y--) {
+            auto block = getBlock(gx, y, gz);
+            // Skip leaves/flora — only solid ground counts
+            bool isLeaf = (block.id == (int)BlockId::OakLeaf);
+            if (block.id != 0 && block.getData().isCollidable && !isLeaf) {
+                gy = y + 1;
+                break;
+            }
+        }
+        if (gy < 0) continue;
+
+        // Check 3x3 overhead column (avoid trees/leaves)
+        bool blocked = false;
+        for (int dy = 0; dy <= 7 && !blocked; dy++)
+            for (int dx = -1; dx <= 1 && !blocked; dx++)
+                for (int dz = -1; dz <= 1 && !blocked; dz++) {
+                    auto b = getBlock(gx + dx, gy + dy, gz + dz);
+                    if (b.id != 0 && b.getData().isCollidable) blocked = true;
+                }
+        if (blocked) continue;
+
+        spawnPos = glm::vec3(x + 0.5f, (float)gy, z + 0.5f);
+        found = true;
+        break;
+    }
+
+    if (!found) return;
+
+    e.position = spawnPos;
+    e.patrolOrigin = spawnPos;
+    e.stuckPosition = spawnPos;
+    e.box.update(e.position);
+    m_pigmen.push_back(e);
+}
+
+void World::updateEntities(float dt, Player& player)
+{
+    // Lazy initial spawn — fill to 8 pigmen as chunks become available
+    if (m_pigmen.size() < 8) {
+        spawnPigman(player, 15.0f);
+    }
+    for (auto& e : m_pigmen) {
+        if (e.state == PigmanEntity::Dead) {
+            e.deathAnimTimer += dt; // drive death animation
+            e.respawnTimer -= dt;
+            if (e.respawnTimer <= 0.0f) {
+                // Respawn: find new position far from player
+                glm::vec3 spawnPos;
+                bool found = false;
+                for (int tries = 0; tries < 50; tries++) {
+                    float x = (float)(std::rand() % (MVP_WORLD_SIZE_X - 20) + 10);
+                    float z = (float)(std::rand() % (MVP_WORLD_SIZE_Z - 20) + 10);
+                    if (glm::distance(glm::vec2(x, z),
+                        glm::vec2(player.position.x, player.position.z)) < 20.0f)
+                        continue;
+                    int gy = -1;
+                    for (int y = MVP_WORLD_HEIGHT - 1; y > 0; y--) {
+                        auto block = getBlock((int)x, y, (int)z);
+                        if (block.id != 0 && block.getData().isCollidable)
+                            { gy = y + 1; break; }
+                    }
+                    if (gy < 0) continue;
+                    bool blocked = false;
+                    for (int dy = 0; dy <= 7; dy++) {
+                        auto b = getBlock((int)x, gy + dy, (int)z);
+                        if (b.id != 0 && b.getData().isCollidable) { blocked = true; break; }
+                    }
+                    if (blocked) continue;
+                    spawnPos = glm::vec3(x + 0.5f, (float)gy, z + 0.5f);
+                    found = true;
+                    break;
+                }
+                if (found) {
+                    // Manual reset since AABB has const dimensions (no copy assignment)
+                    e.position = spawnPos;
+                    e.velocity = glm::vec3(0, 0, 0);
+                    e.rotation = glm::vec3(0, 0, 0);
+                    e.hp = 30;
+                    e.maxHp = 30;
+                    e.moveSpeed = 4.0f;
+                    e.state = PigmanEntity::Patrol;
+                    e.stateTimer = 0.0f;
+                    e.attackCooldown = 1.5f;
+                    e.hurtTimer = 0.0f;
+                    e.stuckTimer = 0.0f;
+                    e.stuckPosition = spawnPos;
+                    e.respawnTimer = -1.0f;
+                    e.patrolOrigin = spawnPos;
+                    e.patrolTarget = glm::vec3(0, 0, 0);
+                    e.path.clear();
+                    e.pathIndex = 0;
+                    e.deathAnimTimer = 0.0f;
+                    e.box.update(e.position);
+                } else {
+                    e.respawnTimer = 5.0f; // retry later
+                }
+            }
+            continue;
+        }
+
+        // Run AI
+        PigmanAI::update(e, dt, player, *this);
+
+        // Gravity
+        int bx = (int)e.position.x;
+        int by = (int)(e.position.y - 0.125f);
+        int bz = (int)e.position.z;
+        auto below = getBlock(bx, by, bz);
+        bool onSolidGround = (below.id != 0 && below.getData().isCollidable
+                              && below.id != (int)BlockId::OakLeaf);
+        if (onSolidGround) {
+            float newY = (float)by + 1.0f + 0.125f;
+            // Cap climb + verify body/head space clear (avoid climbing pit walls)
+            int newBy = (int)newY;
+            auto atBody = getBlock(bx, newBy, bz);
+            auto atHead = getBlock(bx, newBy + 1, bz);
+            bool bodyBlocked = (atBody.id != 0 && atBody.getData().isCollidable);
+            bool headBlocked = (atHead.id != 0 && atHead.getData().isCollidable);
+            if (newY > e.position.y + 1.0f || bodyBlocked || headBlocked)
+                newY = e.position.y; // reject climb
+            e.position.y = newY;
+            e.velocity.y = 0;
+        } else {
+            e.velocity.y -= 40.0f * dt;
+        }
+
+        // Apply velocity
+        e.position.x += e.velocity.x * dt;
+        e.position.y += e.velocity.y * dt;
+        e.position.z += e.velocity.z * dt;
+
+        // Block collision
+        for (int cx = (int)(e.position.x - e.box.dimensions.x);
+             cx <= (int)(e.position.x + e.box.dimensions.x); cx++)
+        for (int cy = (int)(e.position.y - e.box.dimensions.y);
+             cy <= (int)(e.position.y + e.box.dimensions.y); cy++)
+        for (int cz = (int)(e.position.z - e.box.dimensions.z);
+             cz <= (int)(e.position.z + e.box.dimensions.z); cz++) {
+            auto block = getBlock(cx, cy, cz);
+            if (block.id == 0 || !block.getData().isCollidable) continue;
+            bool isGround = (cy <= (int)(e.position.y - e.box.dimensions.y + 0.01f));
+            if (e.velocity.y < -1.0f) continue;
+            if (!isGround) {
+            float rEdge = e.position.x + e.box.dimensions.x;
+            float lEdge = e.position.x - e.box.dimensions.x;
+            if (e.velocity.x > 0 && rEdge > (float)cx && lEdge < (float)(cx + 1)) {
+                e.position.x = (float)cx - e.box.dimensions.x;
+                e.velocity.x = 0;
+            }
+            if (e.velocity.x < 0 && lEdge < (float)(cx + 1) && rEdge > (float)cx) {
+                e.position.x = (float)(cx + 1) + e.box.dimensions.x;
+                e.velocity.x = 0;
+            }
+            float fEdge = e.position.z + e.box.dimensions.z;
+            float bEdge = e.position.z - e.box.dimensions.z;
+            if (e.velocity.z > 0 && fEdge > (float)cz && bEdge < (float)(cz + 1)) {
+                e.position.z = (float)cz - e.box.dimensions.z;
+                e.velocity.z = 0;
+            }
+            if (e.velocity.z < 0 && bEdge < (float)(cz + 1) && fEdge > (float)cz) {
+                e.position.z = (float)(cz + 1) + e.box.dimensions.z;
+                e.velocity.z = 0;
+            }
+            } // !isGround
+        }
+
+        e.box.update(e.position);
+
+        // No damping — AI sets velocity directly each frame
+
+        // Pigman attacks player
+        if (e.state == PigmanEntity::Attack && e.attackCooldown <= 0.0f) {
+            float d = glm::distance(
+                glm::vec3(e.position.x, 0, e.position.z),
+                glm::vec3(player.position.x, 0, player.position.z));
+            if (d < 2.0f) {
+                glm::vec3 knockDir = glm::normalize(
+                    player.position - e.position);
+                knockDir.y = 0;
+                if (glm::length(knockDir) < 0.01f)
+                    knockDir = glm::vec3(0, 0, -1);
+                player.takeDamage(5, knockDir);
+                e.attackCooldown = 1.5f;
+            }
+        }
+
+        // Clamp to world bounds
+        if (e.position.x < 0) e.position.x = 0;
+        if (e.position.x >= MVP_WORLD_SIZE_X) e.position.x = MVP_WORLD_SIZE_X - 1;
+        if (e.position.z < 0) e.position.z = 0;
+        if (e.position.z >= MVP_WORLD_SIZE_Z) e.position.z = MVP_WORLD_SIZE_Z - 1;
+        if (e.position.y < 0) e.position.y = 1;
+    }
 }

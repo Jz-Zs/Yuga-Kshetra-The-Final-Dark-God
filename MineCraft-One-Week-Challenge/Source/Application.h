@@ -1,9 +1,11 @@
 #pragma once
 
+#include <SFML/Audio/Music.hpp>
 #include <SFML/System/Clock.hpp>
 #include <SFML/Window/Window.hpp>
 
 #include "Input/Keyboard.h"
+#include "Input/ToggleKey.h"
 #include "Player/Player.h"
 #include "World/Chunk/Chunk.h"
 #include "World/World.h"
@@ -32,4 +34,9 @@ class Application
     World m_world;
     bool m_prevLeftPressed = false;
     sf::Clock m_rightClickTimer;
+
+    // Music
+    sf::Music m_music;
+    ToggleKey m_musicKey{sf::Keyboard::Key::M};
+    bool m_musicStarted = false;
 };

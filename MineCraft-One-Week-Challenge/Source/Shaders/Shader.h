@@ -23,6 +23,8 @@ class Shader : NonCopyable {
 
     void loadMatrix4(GLuint location, const glm::mat4 &matrix);
 
+    GLuint getID() const { return m_id; }
+
   protected:
     virtual void getUniforms() {};
     GLuint m_id;

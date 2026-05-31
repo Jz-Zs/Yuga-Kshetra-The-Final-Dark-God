@@ -5,6 +5,7 @@
 
 #include "../Config.h"
 #include "ChunkRenderer.h"
+#include "EntityRenderer.h"
 #include "FloraRenderer.h"
 #include "SkyboxRenderer.h"
 #include "WaterRenderer.h"
@@ -17,6 +18,8 @@ class RenderMaster {
   public:
     void drawChunk(const ChunkSection &chunk);
     void drawSky();
+
+    EntityRenderer m_entityRenderer;
 
     void finishRender(sf::Window &window, const Camera &camera);
 
