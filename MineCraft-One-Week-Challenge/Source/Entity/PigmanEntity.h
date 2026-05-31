@@ -1,3 +1,8 @@
+// ===================================================================
+// PigmanEntity = 猪人 = Zoglin (Minecraft zombified piglin)
+// 模型: Res/Models/Zoglin/ (CC-BY-4.0 by trmhtk2 on Sketchfab)
+// ===================================================================
+
 #ifndef PIGMANENTITY_H_INCLUDED
 #define PIGMANENTITY_H_INCLUDED
 
