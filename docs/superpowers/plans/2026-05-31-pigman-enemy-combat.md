@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement pigman enemy with AI (patrol/chase/attack/hurt/dead), A* pathfinding, OBJ model rendering with programmatic animations, player HP/damage/death, and combat detection integrated into the game loop.
+**Goal:** Implement pigman enemy (Zoglin model) with AI (patrol/chase/attack/hurt/dead), A* pathfinding, glTF animated model rendering (tinygltf), player HP/damage/death, and combat detection integrated into the game loop.
 
 **Architecture:** Follows the existing `ItemDropEntity` pattern — `PigmanEntity` is a data struct, AI logic in free functions (`PigmanAI`), rendering via new `EntityRenderer` in `RenderMaster`, entity lifecycle managed by `World`. No external library dependencies.
 
-**Tech Stack:** C++23, SFML 3, OpenGL 4.6 (glad), glm, existing Model/Mesh/BasicShader pipeline
+**Tech Stack:** C++23, SFML 3, OpenGL 4.6 (glad), glm, [tinygltf](https://github.com/syoyo/tinygltf) (MIT header-only), existing Model/Mesh/BasicShader pipeline
 
 ---
 
@@ -472,13 +472,22 @@ Expected: compiles clean.
 
 ---
 
-### Task 4: OBJ Loader + EntityRenderer
+### Task 4: tinygltf + EntityRenderer
 
 **Files:**
 - Create: `Source/Renderer/EntityRenderer.h`
 - Create: `Source/Renderer/EntityRenderer.cpp`
+- Download: `Source/Util/tinygltf.h` (or add as submodule)
 
-- [ ] **Step 1: Create EntityRenderer.h**
+- [ ] **Step 1: Download tinygltf**
+
+Download `tiny_gltf.h` from https://raw.githubusercontent.com/syoyo/tinygltf/release/tiny_gltf.h and place at:
+```
+Source/Util/tiny_gltf.h
+```
+Or add as git submodule. The library is MIT licensed, header-only.
+
+- [ ] **Step 2: Create EntityRenderer.h**
 
 ```cpp
 #ifndef ENTITYRENDERER_H_INCLUDED
@@ -486,13 +495,24 @@ Expected: compiles clean.
 
 #include <vector>
 #include <glad/glad.h>
+#include <unordered_map>
 #include "../Maths/glm.h"
 #include "../Shaders/BasicShader.h"
 #include "../Texture/BasicTexture.h"
 #include "../Entity/PigmanEntity.h"
 #include "../Model.h"
 
+#define TINYGLTF_IMPLEMENTATION
+#define TINYGLTF_NO_STB_IMAGE_WRITE
+#include "../Util/tiny_gltf.h"
+
 class Camera;
+
+struct GltfMeshPart {
+    Model* model = nullptr;
+    int nodeIndex = -1;
+    int parentNode = -1;
+};
 
 class EntityRenderer {
 public:
@@ -503,8 +523,16 @@ public:
     void render(const Camera& camera);
 
 private:
-    Model* loadOBJ(const char* path);
-    Model* m_pigmanModel = nullptr;
+    bool loadGltf(const char* path);
+    void buildMeshParts(tinygltf::Model& gltf);
+    glm::mat4 computeNodeTransform(const tinygltf::Model& gltf, int nodeIdx,
+                                    float animTime, const glm::mat4& parentMat);
+    void renderNode(const tinygltf::Model& gltf, int nodeIdx,
+                    const glm::mat4& parentMat,
+                    const PigmanEntity& e, float animTime);
+
+    std::vector<GltfMeshPart> m_meshParts;
+    tinygltf::Model m_gltfModel;
     BasicTexture m_texture;
     BasicShader m_shader;
     std::vector<const PigmanEntity*> m_entities;
@@ -513,125 +541,178 @@ private:
 #endif
 ```
 
-- [ ] **Step 2: Create EntityRenderer.cpp**
+- [ ] **Step 3: Create EntityRenderer.cpp**
 
 ```cpp
 #include "EntityRenderer.h"
 #include "../Camera.h"
-#include "../Mesh.h"
-#include <fstream>
-#include <sstream>
 #include <iostream>
-#include <unordered_map>
+#include <cmath>
 
 EntityRenderer::EntityRenderer()
     : m_shader("Basic", "Basic")
 {
-    m_pigmanModel = loadOBJ("Res/Models/PigMan/PigMan.obj");
-    if (m_pigmanModel) {
-        m_texture.loadFromFile("Res/Models/PigMan/PigMan.png");
+    if (!loadGltf("Res/Models/Zoglin/scene.gltf")) {
+        std::cerr << "EntityRenderer: failed to load Zoglin model\n";
     }
+    m_texture.loadFromFile("Res/Models/Zoglin/minecraft_-zoglin/textures/material_0_baseColor.png");
 }
 
 EntityRenderer::~EntityRenderer()
 {
-    delete m_pigmanModel;
+    for (auto& part : m_meshParts)
+        delete part.model;
 }
 
-Model* EntityRenderer::loadOBJ(const char* path)
+bool EntityRenderer::loadGltf(const char* path)
 {
-    std::ifstream file(path);
-    if (!file.is_open()) {
-        std::cerr << "EntityRenderer: cannot open " << path << std::endl;
-        return nullptr;
+    tinygltf::TinyGLTF loader;
+    std::string err, warn;
+    bool ok = loader.LoadASCIIFromFile(&m_gltfModel, &err, &warn, path);
+    if (!warn.empty()) std::cerr << "glTF warn: " << warn << "\n";
+    if (!err.empty()) std::cerr << "glTF err: " << err << "\n";
+    if (!ok) return false;
+
+    std::cout << "Zoglin loaded: " << m_gltfModel.meshes.size() << " meshes, "
+              << m_gltfModel.nodes.size() << " nodes\n";
+
+    buildMeshParts(m_gltfModel);
+    return !m_meshParts.empty();
+}
+
+void EntityRenderer::buildMeshParts(tinygltf::Model& gltf)
+{
+    for (size_t ni = 0; ni < gltf.nodes.size(); ni++) {
+        auto& node = gltf.nodes[ni];
+        if (node.mesh < 0) continue;
+
+        auto& mesh = gltf.meshes[node.mesh];
+        for (auto& prim : mesh.primitives) {
+            auto posIt = prim.attributes.find("POSITION");
+            auto uvIt = prim.attributes.find("TEXCOORD_0");
+            if (posIt == prim.attributes.end()) continue;
+
+            auto& posAcc = gltf.accessors[posIt->second];
+            auto& posView = gltf.bufferViews[posAcc.bufferView];
+            auto& posBuf = gltf.buffers[posView.buffer];
+            const float* posData = reinterpret_cast<const float*>(
+                posBuf.data.data() + posView.byteOffset + posAcc.byteOffset);
+
+            std::vector<GLfloat> posVerts(posData, posData + posAcc.count * 3);
+
+            std::vector<GLfloat> uvVerts;
+            if (uvIt != prim.attributes.end()) {
+                auto& uvAcc = gltf.accessors[uvIt->second];
+                auto& uvView = gltf.bufferViews[uvAcc.bufferView];
+                auto& uvBuf = gltf.buffers[uvView.buffer];
+                const float* uvData = reinterpret_cast<const float*>(
+                    uvBuf.data.data() + uvView.byteOffset + uvAcc.byteOffset);
+                uvVerts.assign(uvData, uvData + uvAcc.count * 2);
+            } else {
+                uvVerts.resize(posAcc.count * 2, 0.0f);
+            }
+
+            std::vector<GLuint> indices;
+            if (prim.indices >= 0) {
+                auto& idxAcc = gltf.accessors[prim.indices];
+                auto& idxView = gltf.bufferViews[idxAcc.bufferView];
+                auto& idxBuf = gltf.buffers[idxView.buffer];
+                const unsigned short* idxData = reinterpret_cast<const unsigned short*>(
+                    idxBuf.data.data() + idxView.byteOffset + idxAcc.byteOffset);
+                indices.assign(idxData, idxData + idxAcc.count);
+            }
+
+            Mesh mesh;
+            mesh.vertexPositions = std::move(posVerts);
+            mesh.textureCoords = std::move(uvVerts);
+            mesh.indices = std::move(indices);
+
+            Model* model = new Model();
+            model->addData(mesh);
+            model->genVAO();
+
+            GltfMeshPart part;
+            part.model = model;
+            part.nodeIndex = (int)ni;
+            m_meshParts.push_back(part);
+        }
+    }
+}
+
+glm::mat4 EntityRenderer::computeNodeTransform(const tinygltf::Model& gltf,
+    int nodeIdx, float animTime, const glm::mat4& parentMat)
+{
+    auto& node = gltf.nodes[nodeIdx];
+
+    glm::mat4 local(1.0f);
+
+    if (!node.matrix.empty()) {
+        for (int c = 0; c < 4; c++)
+            for (int r = 0; r < 4; r++)
+                local[c][r] = (float)node.matrix[c * 4 + r];
+    } else {
+        if (!node.translation.empty())
+            local = glm::translate(local,
+                glm::vec3((float)node.translation[0],
+                          (float)node.translation[1],
+                          (float)node.translation[2]));
+        if (!node.rotation.empty())
+            local *= glm::mat4_cast(glm::quat(
+                (float)node.rotation[3], (float)node.rotation[0],
+                (float)node.rotation[1], (float)node.rotation[2]));
+        if (!node.scale.empty())
+            local = glm::scale(local,
+                glm::vec3((float)node.scale[0],
+                          (float)node.scale[1],
+                          (float)node.scale[2]));
     }
 
-    std::vector<glm::vec3> rawPos;
-    std::vector<glm::vec2> rawUV;
+    // Check for animation targeting this node
+    for (auto& anim : gltf.animations) {
+        for (auto& ch : anim.channels) {
+            if (ch.target_node != nodeIdx) continue;
+            if (ch.target_path != "rotation") continue;
 
-    std::vector<GLfloat> outPos, outUV;
-    std::vector<GLuint> outIdx;
-    std::unordered_map<std::string, GLuint> indexMap;
+            auto& sampler = anim.samplers[ch.sampler];
+            auto& inputAcc = gltf.accessors[sampler.input];
+            auto& outputAcc = gltf.accessors[sampler.output];
 
-    std::string line;
-    while (std::getline(file, line)) {
-        if (line.empty() || line[0] == '#') continue;
-        std::istringstream iss(line);
-        std::string type;
-        iss >> type;
+            auto& inView = gltf.bufferViews[inputAcc.bufferView];
+            auto& outView = gltf.bufferViews[outputAcc.bufferView];
+            auto& inBuf = gltf.buffers[inView.buffer];
+            auto& outBuf = gltf.buffers[outView.buffer];
 
-        if (type == "v") {
-            glm::vec3 v; iss >> v.x >> v.y >> v.z;
-            rawPos.push_back(v);
-        } else if (type == "vt") {
-            glm::vec2 vt; iss >> vt.x >> vt.y;
-            rawUV.push_back(vt);
-        } else if (type == "f") {
-            // Handle 3 or 4 vertices per face
-            std::string tokens[4];
-            int count = 0;
-            while (iss >> tokens[count] && count < 4) count++;
+            const float* times = reinterpret_cast<const float*>(
+                inBuf.data.data() + inView.byteOffset + inputAcc.byteOffset);
+            const float* values = reinterpret_cast<const float*>(
+                outBuf.data.data() + outView.byteOffset + outputAcc.byteOffset);
 
-            int triVerts[6] = {0, 1, 2, 0, 2, 3}; // triangulate quad
-            int triCount = (count == 4) ? 6 : 3;
+            // Loop animation: wrap time
+            float maxTime = times[inputAcc.count - 1];
+            float t = std::fmod(animTime, maxTime);
 
-            for (int ti = 0; ti < triCount; ti++) {
-                int vi = triVerts[ti];
-                if (vi >= count) continue;
-                std::string& tok = tokens[vi];
-
-                int vIdx = 0, tIdx = 0;
-                size_t s1 = tok.find('/');
-                if (s1 != std::string::npos) {
-                    vIdx = std::stoi(tok.substr(0, s1));
-                    size_t s2 = tok.find('/', s1 + 1);
-                    if (s2 != std::string::npos && s2 > s1 + 1) {
-                        tIdx = std::stoi(tok.substr(s1 + 1, s2 - s1 - 1));
-                    }
-                } else {
-                    vIdx = std::stoi(tok);
-                }
-
-                std::string key = std::to_string(vIdx) + "/" + std::to_string(tIdx);
-                auto it = indexMap.find(key);
-                if (it != indexMap.end()) {
-                    outIdx.push_back(it->second);
-                } else {
-                    GLuint idx = (GLuint)(outPos.size() / 3);
-                    indexMap[key] = idx;
-                    outIdx.push_back(idx);
-
-                    const auto& p = rawPos[vIdx - 1];
-                    outPos.push_back(p.x); outPos.push_back(p.y); outPos.push_back(p.z);
-
-                    if (tIdx > 0 && tIdx <= (int)rawUV.size()) {
-                        outUV.push_back(rawUV[tIdx - 1].x);
-                        outUV.push_back(rawUV[tIdx - 1].y);
-                    } else {
-                        outUV.push_back(0.0f); outUV.push_back(0.0f);
-                    }
-                }
+            // Find keyframe pair
+            int k = 0;
+            for (int i = 1; i < (int)inputAcc.count; i++) {
+                if (times[i] > t) { k = i - 1; break; }
             }
+            int k2 = (k + 1) % inputAcc.count;
+            float alpha = 0.0f;
+            float dt = times[k2] - times[k];
+            if (dt > 0.0001f) alpha = (t - times[k]) / dt;
+
+            // Interpolate quaternion
+            glm::quat q0(values[k2*4+3], values[k2*4+0],
+                         values[k2*4+1], values[k2*4+2]);
+            glm::quat q1(values[k*4+3], values[k*4+0],
+                         values[k*4+1], values[k*4+2]);
+            glm::quat q = glm::slerp(q0, q1, alpha);
+
+            local *= glm::mat4_cast(q);
         }
     }
 
-    if (outPos.empty()) {
-        std::cerr << "EntityRenderer: no vertices in " << path << std::endl;
-        return nullptr;
-    }
-
-    std::cout << "EntityRenderer: loaded " << path << " ("
-              << rawPos.size() << " verts, " << outIdx.size() << " indices)" << std::endl;
-
-    Mesh mesh;
-    mesh.vertexPositions = std::move(outPos);
-    mesh.textureCoords = std::move(outUV);
-    mesh.indices = std::move(outIdx);
-
-    Model* model = new Model();
-    model->addData(mesh);
-    model->genVAO();
-    return model;
+    return parentMat * local;
 }
 
 void EntityRenderer::addEntity(const PigmanEntity& e)
@@ -641,7 +722,7 @@ void EntityRenderer::addEntity(const PigmanEntity& e)
 
 void EntityRenderer::render(const Camera& camera)
 {
-    if (!m_pigmanModel || m_entities.empty()) return;
+    if (m_meshParts.empty() || m_entities.empty()) return;
 
     m_shader.useProgram();
     m_shader.loadProjectionViewMatrix(camera.getProjViewMatrix());
@@ -650,55 +731,85 @@ void EntityRenderer::render(const Camera& camera)
     for (const auto* e : m_entities) {
         if (e->state == PigmanEntity::Dead && e->deathAnimTimer > 1.0f) continue;
 
-        glm::mat4 model(1.0f);
-        // Pigman Y is at feet; model pivot at center → offset down
-        model = glm::translate(model,
-            glm::vec3(e->position.x, e->position.y - 0.5f, e->position.z));
-        model = glm::rotate(model, glm::radians(e->rotation.y),
-                            glm::vec3(0, 1, 0));
-        model = glm::scale(model, glm::vec3(0.06f));
+        // Base world transform
+        glm::mat4 worldMat(1.0f);
+        worldMat = glm::translate(worldMat, e->position);
+        worldMat = glm::rotate(worldMat, glm::radians(e->rotation.y),
+                               glm::vec3(0, 1, 0));
+        worldMat = glm::scale(worldMat, glm::vec3(0.02f)); // Zoglin is large, scale down
 
-        // Programmatic animations
-        if (e->state == PigmanEntity::Chase) {
-            float bob = std::sin(e->stateTimer * 12.0f) * 0.08f;
-            model = glm::translate(model, glm::vec3(0, bob, 0));
-        }
-        else if (e->state == PigmanEntity::Attack) {
-            // attackCooldown counts from 1.5→0; animation in first 0.3s
+        // Programmatic animation layers
+        glm::mat4 animMat(1.0f);
+
+        if (e->state == PigmanEntity::Attack) {
             float phase = 1.0f - (e->attackCooldown / 1.5f);
             if (phase < 0.3f) {
                 float t = phase / 0.3f;
-                float angle = std::sin(t * 3.14159265f) * 25.0f;
-                model = glm::rotate(model, glm::radians(angle), glm::vec3(0, 0, 1));
+                float lunge = std::sin(t * 3.14159265f) * 0.3f;
+                animMat = glm::translate(animMat, glm::vec3(0, 0, -lunge));
+                float headDip = std::sin(t * 3.14159265f) * 15.0f;
+                animMat = glm::rotate(animMat, glm::radians(headDip),
+                                      glm::vec3(1, 0, 0));
             }
         }
         else if (e->state == PigmanEntity::Dead) {
             float t = e->deathAnimTimer;
             if (t > 1.0f) t = 1.0f;
-            float angle = t * 90.0f;
-            model = glm::rotate(model, glm::radians(angle), glm::vec3(1, 0, 0));
+            animMat = glm::rotate(animMat, glm::radians(t * 90.0f),
+                                  glm::vec3(0, 0, 1));
             float s = 1.0f - t;
-            model = glm::scale(model, glm::vec3(s, s, s));
+            animMat = glm::scale(animMat, glm::vec3(s, s, s));
         }
-        // Hurt: just knockback, visible via position change (no tint for now)
 
-        m_shader.loadModelMatrix(model);
-        m_pigmanModel->bindVAO();
-        glDrawElements(GL_TRIANGLES, m_pigmanModel->getIndicesCount(),
-                       GL_UNSIGNED_INT, nullptr);
+        // Tint: white for hurt, normal otherwise
+        if (e->state == PigmanEntity::Hurt) {
+            glUniform3f(glGetUniformLocation(m_shader.m_id, "tintColor"),
+                        3.0f, 3.0f, 3.0f);
+        } else {
+            glUniform3f(glGetUniformLocation(m_shader.m_id, "tintColor"),
+                        1.0f, 1.0f, 1.0f);
+        }
+
+        float animTime = (e->state == PigmanEntity::Chase) ? e->stateTimer : 0.0f;
+
+        // Render each mesh part at its node transform
+        for (auto& part : m_meshParts) {
+            glm::mat4 nodeMat = computeNodeTransform(m_gltfModel, part.nodeIndex,
+                                                      animTime, glm::mat4(1.0f));
+            glm::mat4 finalMat = worldMat * animMat * nodeMat;
+            m_shader.loadModelMatrix(finalMat);
+            part.model->bindVAO();
+            glDrawElements(GL_TRIANGLES, part.model->getIndicesCount(),
+                          GL_UNSIGNED_INT, nullptr);
+        }
     }
 
     m_entities.clear();
 }
 ```
 
-- [ ] **Step 3: Build**
+- [ ] **Step 4: Add tintColor uniform to BasicShader fragment shader**
+
+The existing `Res/Shaders/Basic.frag` needs a `uniform vec3 tintColor`. Add at top:
+```glsl
+#version 460 core
+in vec2 vUV;
+uniform sampler2D uTex;
+uniform vec3 tintColor = vec3(1.0, 1.0, 1.0);  // NEW
+out vec4 oC;
+void main() {
+    vec4 tex = texture(uTex, vUV);
+    oC = vec4(tex.rgb * tintColor, tex.a);      // MODIFIED
+}
+```
+
+- [ ] **Step 5: Build**
 
 ```bash
 cd "D:\Yuga_Kshetra-The_Final_Dark_God\MineCraft-One-Week-Challenge"
 VCPKG_ROOT="D:\Microsoft Visual Studio\2022\Community\VC\vcpkg" cmake --build "out/build/x64-Debug" --config Debug
 ```
-Expected: compiles. May need to add `#include "../Model.h"` to EntityRenderer.h (already included).
+Expected: compiles clean.
 
 ---
 
@@ -1329,13 +1440,16 @@ cd "D:\Yuga_Kshetra-The_Final_Dark_God\MineCraft-One-Week-Challenge"
 ```
 
 Verify:
-- [ ] 8 pigmen visible in world, rendered as 3D OBJ models
+- [ ] 8 Zoglin models visible in world, rendered as 3D glTF models
+- [ ] Run animation plays (legs swing) during chase
+- [ ] Attack animation: lunge forward + head dip
+- [ ] Hurt: white flash (tint) + knockback + 0.3s stun
+- [ ] Death: side-lay (X-axis 90° rotate) + scale to 0 over 1s
 - [ ] Pigmen patrol (random walk) when player is far
 - [ ] Pigmen chase player when within 12 blocks
 - [ ] Pigmen attack (deal damage) when within 2 blocks
 - [ ] Player left-click attacks pigman within 5 blocks (instant)
 - [ ] Player left-click mines blocks when no pigman hit
-- [ ] Pigman hurt → knockback + stun
 - [ ] Pigman death → drop items + respawn after 10-20s
 - [ ] Player death (HP ≤ 0) → inventory clear + respawn
 - [ ] No crash, no regression on existing features

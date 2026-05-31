@@ -126,27 +126,29 @@ Position unchanged for 3 seconds → abandon path → return to Patrol.
 
 ## Model & Rendering
 
-### Static OBJ
+### Animated glTF (Zoglin)
 
-- Source: `Res/Models/PigMan/PigMan.obj` + `.mtl` + `.png`
-- 890 vertices, 1562 triangles
-- Self-written OBJ parser (~80 lines)
-- Loaded once, shared `Model*` across all pigmen
+- Source: `Res/Models/Zoglin/scene.gltf` + `scene.bin` + `textures/material_0_baseColor.png`
+- License: **CC-BY-4.0** (Sketchfab/trmhtk2)
+- 11-part model: body, head, mane, 4 legs, 2 ears, snout, tusks
+- Bone hierarchy: `GLTF_SceneRootNode` → body/head/legs/ears
+- Built-in animation: **"run"** — 4 legs rotate, 29 keyframes, 1.56s loop
+- Parse with **[tinygltf](https://github.com/syoyo/tinygltf)** (MIT header-only)
 
 ### EntityRenderer
 
-- Uses existing `Model` + `BasicShader` + `BasicTexture` pipeline
+- Uses tinygltf for loading + existing `Model`/`BasicShader` for rendering
 - Runs in `RenderMaster::finishRender()`, after ChunkRenderer, before SkyboxRenderer
-- Per-entity model matrix: `translate * rotateY(facing) * scale(0.06)`
+- Per-part rendering: traverse bone tree, compute per-node transform, draw each mesh part
 
-### Programmatic Animations
+### Animations
 
 | State | Transform | Duration |
 |-------|-----------|----------|
-| Chase | `translate(0, sin(t×10)×0.1, 0)` Y-axis bob | continuous |
-| Attack | `rotate(z, sin(t/0.3)×25°)` forward lunge | 0.3s |
-| Hurt | Red tint via shader uniform | 0.3s |
-| Dead | `rotate(x, t×90°)` + scale to 0 | 1.0s |
+| Chase | glTF "run" animation (leg swing) | continuous loop |
+| Attack | Whole model lunge forward + head rotate down | 0.3s |
+| Hurt | White tint via shader uniform + knockback | 0.3s |
+| Dead | Model rotate X-axis 90° (side-lay) + scale to 0 | 1.0s |
 
 BasicShader: add `vec3 tintColor` uniform (default (1,1,1) = no tint).
 
