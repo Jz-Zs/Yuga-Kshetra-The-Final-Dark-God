@@ -47,9 +47,7 @@ namespace std {
 template <> struct hash<Material::ID> {
     size_t operator()(const Material::ID &id) const
     {
-        std::hash<Material::ID> hasher;
-
-        return hasher(id);
+        return std::hash<int>()(static_cast<int>(id));
     }
 };
 } // namespace std

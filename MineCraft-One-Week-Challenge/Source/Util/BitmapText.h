@@ -13,8 +13,9 @@ class BitmapText {
     ~BitmapText();
 
     GLuint update(const std::vector<std::string>& lines,
-                  int texWidth, int texHeight);
+                  int texWidth, int texHeight, bool center = false);
 
+    void setFontSize(float size) { m_fontSize = size; }
     int measureTextWidth(const std::string& text);
 
   private:

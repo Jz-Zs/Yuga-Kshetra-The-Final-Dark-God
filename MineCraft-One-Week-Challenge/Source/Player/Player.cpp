@@ -295,6 +295,266 @@ void Player::mouseInput(sf::Window& window)
     lastMousePosition = sf::Mouse::getPosition();
 }
 
+void Player::drawHealthBar()
+{
+    auto& atlas = BlockDatabase::get().textureAtlas;
+    GLuint atlasID = atlas.getID();
+
+    auto fullUV  = atlas.getTexture(sf::Vector2i(13, 1));
+    auto halfUV  = atlas.getTexture(sf::Vector2i(14, 1));
+    auto emptyUV = atlas.getTexture(sf::Vector2i(15, 1));
+
+    const float heartSize = 24.0f;
+    const float gap = 2.0f;
+    const int numHearts = 10;
+    const float pad = 8.0f;
+    float contentW = numHearts * (heartSize + gap) - gap + pad * 2;
+    float contentH = heartSize + pad * 2;
+
+    auto displaySize = ImGui::GetIO().DisplaySize;
+
+    // Position: centered above hotbar (hotbar content = 1 slot row)
+    const float slotSize = 48.0f;
+    const float slotPad = 4.0f;
+    float hotbarContentH = 1 * (slotSize + slotPad) + slotPad; // = 56
+    float hotbarY = displaySize.y - hotbarContentH - 10.0f;
+
+    float winX = (displaySize.x - contentW) * 0.5f;
+    float winY = hotbarY - contentH - 4.0f;
+
+    ImGui::SetNextWindowPos(ImVec2(winX, winY), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(contentW, contentH), ImGuiCond_Always);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, 0.75f));
+
+    int flags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+                ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar |
+                ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoScrollbar;
+
+    if (ImGui::Begin("HealthBar", nullptr, flags)) {
+        ImVec2 wp = ImGui::GetWindowPos();
+        auto* dl = ImGui::GetWindowDrawList();
+
+        for (int i = 0; i < numHearts; i++) {
+            float x = wp.x + pad + i * (heartSize + gap);
+            float y = wp.y + pad;
+            int hpForHeart = m_hp - i * 10;
+
+            std::array<GLfloat, 8>* uv;
+            if (hpForHeart >= 10)      uv = &fullUV;
+            else if (hpForHeart >= 5)  uv = &halfUV;
+            else                       uv = &emptyUV;
+
+            ImVec2 uv0((*uv)[2], (*uv)[5]);
+            ImVec2 uv1((*uv)[0], (*uv)[3]);
+            ImVec2 p0(x, y);
+            ImVec2 p1(x + heartSize, y + heartSize);
+
+            dl->AddImage((ImTextureID)(intptr_t)atlasID, p0, p1, uv0, uv1);
+        }
+    }
+    ImGui::End();
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar();
+}
+
+void Player::drawTimer()
+{
+    if (!m_roundActive) return;
+
+    auto displaySize = ImGui::GetIO().DisplaySize;
+
+    int minutes = (int)m_roundTimeLeft / 60;
+    int seconds = (int)m_roundTimeLeft % 60;
+
+    char roundBuf[32], timeBuf[16];
+    snprintf(roundBuf, sizeof(roundBuf), "第 %d 回合", (int)m_roundNumber);
+    snprintf(timeBuf, sizeof(timeBuf), "%02d:%02d", minutes, seconds);
+
+    // Measure and size texture to fit widest line
+    m_hudText.setFontSize(36.0f);
+    int roundW = m_hudText.measureTextWidth(roundBuf);
+    int timeW = m_hudText.measureTextWidth(timeBuf);
+    int maxW = roundW > timeW ? roundW : timeW;
+    int lineH = (int)(36.0f * 1.05f);
+    int texW = maxW + 12;
+    int texH = 4 + 2 * lineH + 2;
+
+    std::vector<std::string> lines = { roundBuf, timeBuf };
+    GLuint texId = m_hudText.update(lines, texW, texH, true); // centered
+    m_hudText.setFontSize(24.0f); // restore for settlement screen
+
+    const float pad = 4.0f;
+    const float winW = (float)texW + pad * 2;
+    const float winH = (float)texH + pad * 2;
+    float winX = (displaySize.x - winW) * 0.5f;
+    float winY = 6.0f;
+
+    ImGui::SetNextWindowPos(ImVec2(winX, winY), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(winW, winH), ImGuiCond_Always);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, 0.5f));
+
+    int flags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+                ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar |
+                ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoScrollbar;
+
+    if (ImGui::Begin("Timer", nullptr, flags)) {
+        ImVec2 wp = ImGui::GetWindowPos();
+        auto* dl = ImGui::GetWindowDrawList();
+        dl->AddImage((ImTextureID)(intptr_t)texId,
+                     ImVec2(wp.x + pad, wp.y + pad),
+                     ImVec2(wp.x + pad + texW, wp.y + pad + texH));
+    }
+    ImGui::End();
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar();
+}
+
+void Player::drawSettlement(const Camera* camera)
+{
+    // Trigger: round ended OR player dead
+    bool shouldShow = (!m_roundActive && m_roundNumber > 0) || m_isDead;
+    if (!shouldShow) return;
+
+    auto displaySize = ImGui::GetIO().DisplaySize;
+
+    // ================================================================
+    // Chinese name mapping for Material IDs
+    // ================================================================
+    auto cnName = [](Material::ID id) -> std::string {
+        switch (id) {
+            case Material::ID::Nothing:    return "空";
+            case Material::ID::Grass:      return "草方块";
+            case Material::ID::Dirt:       return "泥土";
+            case Material::ID::Stone:      return "石材";
+            case Material::ID::OakBark:    return "木材";
+            case Material::ID::OakLeaf:    return "树叶";
+            case Material::ID::Sand:       return "沙子";
+            case Material::ID::Cactus:     return "仙人掌";
+            case Material::ID::Rose:       return "玫瑰";
+            case Material::ID::TallGrass:  return "草";
+            case Material::ID::DeadShrub:  return "枯木";
+            case Material::ID::Stick:      return "木棍";
+            case Material::ID::WoodenSword:return "木剑";
+            case Material::ID::RawMeat:    return "生肉";
+            default: return "未知";
+        }
+    };
+
+    // ================================================================
+    // Prepare summary text
+    // ================================================================
+    int survTotalSec = (int)(600.0f - m_roundTimeLeft);
+    int survMin = survTotalSec / 60;
+    int survSec = survTotalSec % 60;
+
+    char titleBuf[64];
+    snprintf(titleBuf, sizeof(titleBuf), "═══ 第 %d 回合 结束 ═══", m_roundNumber);
+
+    char survBuf[64];
+    snprintf(survBuf, sizeof(survBuf), "存活时间   %02d:%02d", survMin, survSec);
+
+    char killBuf[64];
+    snprintf(killBuf, sizeof(killBuf), "击杀猪人   %d", m_pigmanKills);
+
+    int totalItems = 0;
+    int totalTypes = 0;
+    for (auto& [matId, count] : m_roundCollection) {
+        if (count > 0) { totalItems += count; totalTypes++; }
+    }
+    char collectBuf[64];
+    snprintf(collectBuf, sizeof(collectBuf), "收集物品   %d 类 / %d 个", totalTypes, totalItems);
+
+    // ================================================================
+    // Build collection detail lines
+    // ================================================================
+    std::vector<std::string> detailLines;
+    for (auto& [matId, count] : m_roundCollection) {
+        if (count > 0) {
+            char buf[64];
+            snprintf(buf, sizeof(buf), "  %s  x%d", cnName(matId).c_str(), count);
+            detailLines.push_back(buf);
+        }
+    }
+    int detailCount = (int)detailLines.size();
+
+    // ================================================================
+    // Batch ALL text into one BitmapText texture
+    // ================================================================
+    std::vector<std::string> textLines;
+    textLines.push_back(titleBuf);
+    textLines.push_back("");
+    textLines.push_back(survBuf);
+    textLines.push_back(killBuf);
+    textLines.push_back(collectBuf);
+    if (detailCount > 0) {
+        textLines.push_back("");
+        textLines.push_back("收集明细:");
+        for (auto& dl : detailLines)
+            textLines.push_back(dl);
+    }
+
+    int texW = 320;
+    int lineH = 28;
+    int texH = 8 + (int)textLines.size() * lineH + 8;
+    GLuint hudTexId = m_hudText.update(textLines, texW, texH);
+
+    // ================================================================
+    // Full-screen overlay
+    // ================================================================
+    ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(displaySize, ImGuiCond_Always);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, 0.7f));
+
+    int flags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+                ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar |
+                ImGuiWindowFlags_NoBringToFrontOnFocus;
+
+    if (ImGui::Begin("Settlement", nullptr, flags)) {
+        float panelW = (float)texW + 40.0f;
+        float panelH = (float)texH + 60.0f;
+        float panelX = (displaySize.x - panelW) * 0.5f;
+        float panelY = (displaySize.y - panelH) * 0.5f;
+
+        auto* dl = ImGui::GetWindowDrawList();
+
+        // Panel background
+        dl->AddRectFilled(ImVec2(panelX, panelY),
+                          ImVec2(panelX + panelW, panelY + panelH),
+                          IM_COL32(20, 20, 20, 220));
+        dl->AddRect(ImVec2(panelX, panelY),
+                    ImVec2(panelX + panelW, panelY + panelH),
+                    IM_COL32(180, 180, 180, 255), 0.0f, 0, 2.0f);
+
+        // BitmapText texture (all Chinese text in one image)
+        dl->AddImage((ImTextureID)(intptr_t)hudTexId,
+                     ImVec2(panelX + 20, panelY + 20),
+                     ImVec2(panelX + 20 + texW, panelY + 20 + texH));
+
+        // Placeholder button at bottom
+        float btnW = 160.0f, btnH = 36.0f;
+        float btnX = panelX + (panelW - btnW) * 0.5f;
+        float btnY = panelY + panelH - btnH - 16.0f;
+        dl->AddRectFilled(ImVec2(btnX, btnY),
+                          ImVec2(btnX + btnW, btnY + btnH),
+                          IM_COL32(60, 60, 60, 200));
+        dl->AddRect(ImVec2(btnX, btnY),
+                    ImVec2(btnX + btnW, btnY + btnH),
+                    IM_COL32(150, 150, 150, 255));
+        // Button text (ASCII only for this Chinese label)
+        dl->AddText(ImGui::GetFont(), 18.0f,
+                    ImVec2(btnX + 16, btnY + 6),
+                    IM_COL32(180, 180, 180, 255),
+                    "准备下一回合");
+    }
+    ImGui::End();
+
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar();
+}
+
 void Player::draw(RenderMaster& master, const Camera* camera)
 {
     // --- Chinese material names (kept for future text-based UI) ---
@@ -418,6 +678,14 @@ void Player::draw(RenderMaster& master, const Camera* camera)
         m_swingTimer += 0.016f;
         if (m_swingTimer >= 0.3f) { m_isSwinging = false; m_swingTimer = 0.0f; }
     }
+
+    // --- HUD: Health Bar (above hotbar, below backpack) ---
+    if (!m_isDead)
+        drawHealthBar();
+
+    // --- HUD: Timer + Round Counter (top-center) ---
+    if (m_roundActive && !m_isDead)
+        drawTimer();
 
     // --- Backpack + Crafting (B key) ---
     if (m_backpackOpen)
@@ -833,6 +1101,9 @@ void Player::draw(RenderMaster& master, const Camera* camera)
                 (ImTextureID)(intptr_t)atlasID, p0, p1, uv0, uv1, col);
         }
     }
+
+    // --- HUD: Settlement Screen (full overlay, top-most) ---
+    drawSettlement(camera);
 }
 
 void Player::jump()

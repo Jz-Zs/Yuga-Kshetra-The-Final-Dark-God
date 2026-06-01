@@ -235,6 +235,27 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
 
     m_world.update(m_camera, delta);
 
+    // ================================================================
+    // TEMP: HUD test values (remove after Entry 5 verification)
+    // ================================================================
+    {
+        m_player.m_roundActive = true;
+        m_player.m_roundNumber = 3;
+        m_player.m_roundTimeLeft -= delta;
+        if (m_player.m_roundTimeLeft < 0) m_player.m_roundTimeLeft = 600.0f;
+        m_player.m_hp = 73; // 7 full + 1 half + 2 empty hearts
+        m_player.m_pigmanKills = 12;
+        m_player.m_roundCollection[Material::ID::Grass] = 12;
+        m_player.m_roundCollection[Material::ID::Dirt] = 8;
+        m_player.m_roundCollection[Material::ID::Stone] = 6;
+        m_player.m_roundCollection[Material::ID::OakBark] = 3;
+        m_player.m_roundCollection[Material::ID::Stick] = 5;
+        m_player.m_roundCollection[Material::ID::RawMeat] = 2;
+        // To test settlement screen: comment out m_roundActive=true above
+        // and set: m_player.m_roundActive = false;
+    }
+    // ================================================================
+
     // Player death handling
     if (m_player.m_isDead && m_player.m_hp <= 0) {
         m_player.m_hp = 100;

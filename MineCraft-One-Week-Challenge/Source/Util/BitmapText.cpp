@@ -138,7 +138,7 @@ int BitmapText::measureTextWidth(const std::string& text)
 }
 
 GLuint BitmapText::update(const std::vector<std::string>& lines,
-                           int texWidth, int texHeight)
+                           int texWidth, int texHeight, bool center)
 {
     if (!m_fontInfo) {
         // No font: return empty texture
@@ -155,8 +155,14 @@ GLuint BitmapText::update(const std::vector<std::string>& lines,
 
     int y = 4;
     for (auto& line : lines) {
-        renderUTF8(m_buffer.data(), texWidth, texHeight, 4, y, line);
-        renderUTF8(m_buffer.data(), texWidth, texHeight, 5, y, line); // bold: +1px offset
+        int x = 4;
+        if (center) {
+            int lineW = measureTextWidth(line);
+            x = (texWidth - lineW) / 2;
+            if (x < 0) x = 0;
+        }
+        renderUTF8(m_buffer.data(), texWidth, texHeight, x, y, line);
+        renderUTF8(m_buffer.data(), texWidth, texHeight, x + 1, y, line); // bold: +1px offset
         y += (int)(m_fontSize * 1.1f);
     }
 

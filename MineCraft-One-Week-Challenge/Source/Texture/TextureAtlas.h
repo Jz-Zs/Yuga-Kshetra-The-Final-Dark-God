@@ -11,6 +11,8 @@ class TextureAtlas : public BasicTexture {
     std::array<GLfloat, 8> getTexture(const sf::Vector2i &coords);
 
   private:
+    void addHeartTextures(sf::Image &image);
+
     int m_imageSize;
     int m_individualTextureSize;
 };

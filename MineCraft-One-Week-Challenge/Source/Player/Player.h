@@ -6,6 +6,7 @@
 #include <memory>
 #include <sstream>
 #include <vector>
+#include <unordered_map>
 
 #include "../Entity.h"
 
@@ -34,6 +35,9 @@ class Player : public Entity {
     void setDropItems(std::vector<ItemDropEntity>* drops);
 
     void draw(RenderMaster &master, const Camera* camera = nullptr);
+    void drawHealthBar();
+    void drawTimer();
+    void drawSettlement(const Camera* camera);
     void renderWeapon();
 
     ItemStack &getHeldItems();
@@ -70,6 +74,13 @@ class Player : public Entity {
 
     // Death
     bool m_isDead = false;
+
+    // HUD data (Entry 5 renders, Entry 6 fills)
+    int m_roundNumber = 1;
+    float m_roundTimeLeft = 600.0f;
+    int m_pigmanKills = 0;
+    std::unordered_map<Material::ID, int> m_roundCollection;
+    bool m_roundActive = false;
 
   private:
     void jump();
@@ -113,6 +124,7 @@ class Player : public Entity {
 
     // Software bitmap text renderer
     BitmapText m_bitmapText;
+    BitmapText m_hudText;          // Chinese text for timer + settlement screen
 
     std::vector<ItemDropEntity>* m_pDropItems = nullptr;
 };
