@@ -22,6 +22,7 @@ enum class BlockId : Block_t {
     Stick = 12,
     WoodenSword = 13,
     RawMeat = 14,
+    GoldBlock = 15,
 
     NUM_TYPES
 };

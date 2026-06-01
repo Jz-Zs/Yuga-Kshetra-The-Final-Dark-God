@@ -48,6 +48,13 @@ class World : public NonCopyable {
     void updateEntities(float dt, Player& player);
     std::vector<PigmanEntity>& getPigmen() { return m_pigmen; }
 
+    bool isExtractionActive() const { return m_extractionActive; }
+    const glm::ivec3& getExtractionCenter() const { return m_extractionCenter; }
+
+    void resetWorld(const Camera &camera, Player &player);
+
+    void placeExtractionPoint();
+
     static VectorXZ getBlockXZ(int x, int z);
     static VectorXZ getChunkXZ(int x, int z);
 
@@ -82,6 +89,9 @@ class World : public NonCopyable {
     const int m_renderDistance;
 
     glm::vec3 m_playerSpawnPoint;
+
+    glm::ivec3 m_extractionCenter{0, 0, 0};
+    bool m_extractionActive = false;
 };
 
 #endif // WORLD_H_INCLUDED

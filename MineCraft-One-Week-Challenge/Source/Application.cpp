@@ -1,6 +1,7 @@
 #include "Application.h"
 
 #include <SFML/Window/Event.hpp>
+#include <cmath>
 #include <imgui.h>
 #include <iostream>
 
@@ -27,6 +28,10 @@ Application::Application(sf::Window& window, const Config& config)
     if (!m_music.openFromFile("Res/Musics/Minecraft-C418.mp3"))
         std::cerr << "Failed to load music\n";
     m_music.setLooping(true);
+
+    // Auto-start first round
+    m_player.m_roundActive = true;
+    m_player.m_roundTimeLeft = 600.0f;
 }
 
 void Application::on_event(const sf::Event& event)
@@ -235,33 +240,85 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
 
     m_world.update(m_camera, delta);
 
-    // ================================================================
-    // TEMP: HUD test values (remove after Entry 5 verification)
-    // ================================================================
-    {
-        m_player.m_roundActive = true;
-        m_player.m_roundNumber = 3;
-        m_player.m_roundTimeLeft -= delta;
-        if (m_player.m_roundTimeLeft < 0) m_player.m_roundTimeLeft = 600.0f;
-        m_player.m_hp = 73; // 7 full + 1 half + 2 empty hearts
-        m_player.m_pigmanKills = 12;
-        m_player.m_roundCollection[Material::ID::Grass] = 12;
-        m_player.m_roundCollection[Material::ID::Dirt] = 8;
-        m_player.m_roundCollection[Material::ID::Stone] = 6;
-        m_player.m_roundCollection[Material::ID::OakBark] = 3;
-        m_player.m_roundCollection[Material::ID::Stick] = 5;
-        m_player.m_roundCollection[Material::ID::RawMeat] = 2;
-        // To test settlement screen: comment out m_roundActive=true above
-        // and set: m_player.m_roundActive = false;
-    }
-    // ================================================================
+    // Extraction point detection
+    if (m_player.m_roundActive && m_world.isExtractionActive()) {
+        int px = (int)std::floor(m_player.position.x);
+        int py = (int)std::floor(m_player.position.y - 0.01f); // block at feet
+        int pz = (int)std::floor(m_player.position.z);
 
-    // Player death handling
+        // Check if standing on any GoldBlock in the 3x3 platform
+        bool onGold = false;
+        auto ec = m_world.getExtractionCenter();
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (px == ec.x + dx && pz == ec.z + dz && py == ec.y) {
+                    auto footBlock = m_world.getBlock(px, py, pz);
+                    if (footBlock.id == (int)BlockId::GoldBlock) {
+                        onGold = true;
+                    }
+                }
+            }
+        }
+
+        if (onGold) {
+            if (!m_player.m_isExtracting) {
+                m_player.m_isExtracting = true;
+                m_player.m_extractionProgress = 0.0f;
+            }
+            m_player.m_extractionProgress += delta / 5.0f;
+            if (m_player.m_extractionProgress >= 1.0f) {
+                // Extraction success
+                m_player.m_roundActive = false;
+                m_player.m_isExtracting = false;
+                m_player.m_extractionProgress = 0.0f;
+                m_player.m_roundNumber++;
+            }
+        } else {
+            m_player.m_isExtracting = false;
+            m_player.m_extractionProgress = 0.0f;
+        }
+    }
+
+    // Round timer logic
+    if (m_player.m_roundActive) {
+        m_player.m_roundTimeLeft -= delta;
+        if (m_player.m_roundTimeLeft <= 0.0f) {
+            m_player.m_roundTimeLeft = 0.0f;
+            m_player.m_roundActive = false;
+            m_player.m_settlementOutcome = Player::SettlementOutcome::TimeUp;
+            m_player.clearInventory();
+        }
+        // Spawn extraction point at 300s remaining (5 minutes elapsed)
+        static bool extractionSpawned = false;
+        if (m_player.m_roundTimeLeft <= 300.0f && !extractionSpawned && !m_world.isExtractionActive()) {
+            m_world.placeExtractionPoint();
+            extractionSpawned = true;
+        }
+        if (m_player.m_roundTimeLeft > 300.0f) {
+            extractionSpawned = false;
+        }
+    }
+
+    // Player death — trigger settlement
     if (m_player.m_isDead && m_player.m_hp <= 0) {
-        m_player.m_hp = 100;
+        m_player.m_roundActive = false;
+        m_player.m_settlementOutcome = Player::SettlementOutcome::Death;
+        m_player.clearInventory();
+        m_player.m_hp = 0;
+    }
+
+    // Settlement "准备下一回合" button callback
+    if (m_player.m_requestNewRound) {
+        m_player.m_requestNewRound = false;
         m_player.m_isDead = false;
-        m_player.position = {64.0f, 35.0f, 64.0f};
-        m_player.velocity = {0, 0, 0};
+        m_player.m_hp = m_player.m_maxHp;
+        m_player.m_extractionProgress = 0.0f;
+        m_player.m_isExtracting = false;
+        m_player.m_pigmanKills = 0;
+        m_player.m_roundCollection.clear();
+        m_player.m_roundTimeLeft = 600.0f;
+        m_player.m_roundActive = true;
+        m_world.resetWorld(m_camera, m_player);
     }
 
     // Auto-pickup

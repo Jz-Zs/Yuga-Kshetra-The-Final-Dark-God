@@ -22,14 +22,15 @@ struct Material : public NonCopyable {
         DeadShrub,
         Stick,
         WoodenSword,
-        RawMeat
+        RawMeat,
+        GoldBlock
     };
 
     const static Material NOTHING, GRASS_BLOCK, DIRT_BLOCK, STONE_BLOCK,
         OAK_BARK_BLOCK, OAK_LEAF_BLOCK, SAND_BLOCK, CACTUS_BLOCK, ROSE,
         TALL_GRASS, DEAD_SHRUB;
 
-    const static Material STICK, WOODEN_SWORD, RAW_MEAT;
+    const static Material STICK, WOODEN_SWORD, RAW_MEAT, GOLD_BLOCK;
 
     Material(Material::ID id, int maxStack, bool isBlock, std::string &&name);
 

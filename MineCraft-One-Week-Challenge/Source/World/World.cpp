@@ -35,6 +35,35 @@ World::~World()
     }
 }
 
+void World::resetWorld(const Camera &camera, Player &player)
+{
+    // 1. Clear entities
+    m_dropItems.clear();
+    m_pigmen.clear();
+    m_events.clear();
+
+    // 2. Delete GPU meshes and erase all chunks
+    m_chunkManager.deleteMeshes();
+    auto& chunks = m_chunkManager.getChunks();
+    chunks.clear();
+
+    // 3. Reset player position to spawn point
+    setSpawnPoint();
+    player.position = m_playerSpawnPoint;
+    player.velocity = {0, 0, 0};
+
+    m_extractionActive = false;
+
+    // 4. Reload chunks around camera
+    loadChunks(camera);
+
+    // 5. Spawn initial pigmen (max 8)
+    m_pigmen.clear();
+    for (int i = 0; i < 8; i++) {
+        spawnPigman(player, 15.0f);
+    }
+}
+
 // world coords into chunk column coords
 ChunkBlock World::getBlock(int x, int y, int z)
 {
@@ -222,6 +251,69 @@ void World::updateChunks()
         s.makeMesh();
     }
     m_chunkUpdates.clear();
+}
+
+void World::placeExtractionPoint()
+{
+    // Random position, entire 3x3 within [0,127]
+    glm::ivec3 center{64, 35, 64};
+    bool valid = false;
+
+    for (int tries = 0; tries < 200; tries++) {
+        int cx = RandomSingleton::get().intInRange(1, 126);
+        int cz = RandomSingleton::get().intInRange(1, 126);
+
+        // Load chunk and get surface height
+        int chunkX = cx / CHUNK_SIZE, chunkZ = cz / CHUNK_SIZE;
+        m_chunkManager.loadChunk(chunkX, chunkZ);
+        Chunk& chunk = m_chunkManager.getChunk(chunkX, chunkZ);
+        int surfaceY = chunk.getHeightAt(cx & 15, cz & 15);
+
+        // Reject if surface is too low (water level or below)
+        if (surfaceY < MVP_WATER_LEVEL) continue;
+
+        // Reject: tree blocks, water, cactus in 3x3 area at surface level
+        bool rejected = false;
+        for (int dx = -1; dx <= 1 && !rejected; dx++) {
+            for (int dz = -1; dz <= 1 && !rejected; dz++) {
+                int bx = cx + dx, bz = cz + dz;
+                int ckx = bx / CHUNK_SIZE, ckz = bz / CHUNK_SIZE;
+                m_chunkManager.loadChunk(ckx, ckz);
+                Chunk& ck = m_chunkManager.getChunk(ckx, ckz);
+                int sy = ck.getHeightAt(bx & 15, bz & 15);
+                auto block = ck.getBlock(bx & 15, sy, bz & 15);
+                if (block.id == (int)BlockId::OakBark || block.id == (int)BlockId::OakLeaf ||
+                    block.id == (int)BlockId::Water   || block.id == (int)BlockId::Cactus) {
+                    rejected = true;
+                }
+            }
+        }
+
+        if (!rejected) {
+            center = {cx, surfaceY + 1, cz};
+            valid = true;
+            break;
+        }
+    }
+
+    if (!valid) {
+        // Fallback: center of world at reasonable height
+        center = {64, 35, 64};
+    }
+
+    // Place 3x3 GoldBlock platform
+    for (int dx = -1; dx <= 1; dx++) {
+        for (int dz = -1; dz <= 1; dz++) {
+            int bx = center.x + dx, bz = center.z + dz;
+            setBlock(bx, center.y, bz, BlockId::GoldBlock);
+            updateChunk(bx, center.y, bz);
+        }
+    }
+
+    m_extractionCenter = center;
+    m_extractionActive = true;
+    std::cout << "Extraction point placed at (" << center.x << ", "
+              << center.y << ", " << center.z << ")\n";
 }
 
 void World::setSpawnPoint()

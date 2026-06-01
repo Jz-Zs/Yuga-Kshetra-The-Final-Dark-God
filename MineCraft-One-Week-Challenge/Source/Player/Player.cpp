@@ -2,6 +2,7 @@
 
 #include <SFML/Graphics.hpp>
 
+#include <cmath>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -52,8 +53,10 @@ bool Player::addItem(const Material& material)
         if (m_items[i].getMaterial().id == id)
         {
             int leftover = m_items[i].add(1);
-            if (leftover == 0)
+            if (leftover == 0) {
+                m_roundCollection[material.id]++;
                 return true;
+            }
             // Stack full, continue to next slot
         }
     }
@@ -63,6 +66,7 @@ bool Player::addItem(const Material& material)
         if (m_items[i].getMaterial().id == Material::ID::Nothing)
         {
             m_items[i] = {material, 1};
+            m_roundCollection[material.id]++;
             return true;
         }
     }
@@ -304,8 +308,8 @@ void Player::drawHealthBar()
     auto halfUV  = atlas.getTexture(sf::Vector2i(14, 1));
     auto emptyUV = atlas.getTexture(sf::Vector2i(15, 1));
 
-    const float heartSize = 24.0f;
-    const float gap = 2.0f;
+    const float heartSize = 36.0f;
+    const float gap = -1.0f;
     const int numHearts = 10;
     const float pad = 8.0f;
     float contentW = numHearts * (heartSize + gap) - gap + pad * 2;
@@ -313,23 +317,24 @@ void Player::drawHealthBar()
 
     auto displaySize = ImGui::GetIO().DisplaySize;
 
-    // Position: centered above hotbar (hotbar content = 1 slot row)
+    // Position: centered above hotbar, always
     const float slotSize = 48.0f;
     const float slotPad = 4.0f;
-    float hotbarContentH = 1 * (slotSize + slotPad) + slotPad; // = 56
+    float hotbarContentH = 1 * (slotSize + slotPad) + slotPad;
     float hotbarY = displaySize.y - hotbarContentH - 10.0f;
+    float winY = hotbarY - contentH - 1.0f;
 
-    float winX = (displaySize.x - contentW) * 0.5f;
-    float winY = hotbarY - contentH - 4.0f;
+    float winX = (displaySize.x - contentW) * 0.5f - 55.0f;
 
     ImGui::SetNextWindowPos(ImVec2(winX, winY), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(contentW, contentH), ImGuiCond_Always);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, 0.75f));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
 
     int flags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar |
-                ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoScrollbar;
+                ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoScrollbar |
+                ImGuiWindowFlags_NoBackground;
 
     if (ImGui::Begin("HealthBar", nullptr, flags)) {
         ImVec2 wp = ImGui::GetWindowPos();
@@ -363,30 +368,33 @@ void Player::drawTimer()
     if (!m_roundActive) return;
 
     auto displaySize = ImGui::GetIO().DisplaySize;
-
     int minutes = (int)m_roundTimeLeft / 60;
     int seconds = (int)m_roundTimeLeft % 60;
 
-    char roundBuf[32], timeBuf[16];
-    snprintf(roundBuf, sizeof(roundBuf), "第 %d 回合", (int)m_roundNumber);
+    // Cached round text via BitmapText (only re-render when round changes)
+    static int lastRound = -1;
+    static GLuint roundTexId = 0;
+    static int roundTexW = 0, roundTexH = 0;
+    if ((int)m_roundNumber != lastRound) {
+        lastRound = (int)m_roundNumber;
+        char buf[32];
+        snprintf(buf, sizeof(buf), "第 %d 回合", (int)m_roundNumber);
+        m_hudText.setFontSize(36.0f);
+        roundTexW = m_hudText.measureTextWidth(buf) + 12;
+        roundTexH = (int)(36.0f * 1.1f) + 4;
+        std::vector<std::string> lines = { buf };
+        roundTexId = m_hudText.update(lines, roundTexW, roundTexH, true);
+        m_hudText.setFontSize(24.0f);
+    }
+
+    char timeBuf[16];
     snprintf(timeBuf, sizeof(timeBuf), "%02d:%02d", minutes, seconds);
 
-    // Measure and size texture to fit widest line
-    m_hudText.setFontSize(36.0f);
-    int roundW = m_hudText.measureTextWidth(roundBuf);
-    int timeW = m_hudText.measureTextWidth(timeBuf);
-    int maxW = roundW > timeW ? roundW : timeW;
-    int lineH = (int)(36.0f * 1.05f);
-    int texW = maxW + 12;
-    int texH = 4 + 2 * lineH + 2;
-
-    std::vector<std::string> lines = { roundBuf, timeBuf };
-    GLuint texId = m_hudText.update(lines, texW, texH, true); // centered
-    m_hudText.setFontSize(24.0f); // restore for settlement screen
-
+    // Window sized to fit both texts stacked (round on top, MM:SS below)
     const float pad = 4.0f;
-    const float winW = (float)texW + pad * 2;
-    const float winH = (float)texH + pad * 2;
+    const float timeH = 30.0f;
+    const float winW = (float)roundTexW + pad * 2;
+    const float winH = (float)roundTexH + timeH + pad * 2;
     float winX = (displaySize.x - winW) * 0.5f;
     float winY = 6.0f;
 
@@ -402,11 +410,22 @@ void Player::drawTimer()
     if (ImGui::Begin("Timer", nullptr, flags)) {
         ImVec2 wp = ImGui::GetWindowPos();
         auto* dl = ImGui::GetWindowDrawList();
-        dl->AddImage((ImTextureID)(intptr_t)texId,
-                     ImVec2(wp.x + pad, wp.y + pad),
-                     ImVec2(wp.x + pad + texW, wp.y + pad + texH));
+
+        // Round text (top, centered) via BitmapText image
+        if (roundTexId)
+            dl->AddImage((ImTextureID)(intptr_t)roundTexId,
+                         ImVec2(wp.x + pad, wp.y + pad),
+                         ImVec2(wp.x + pad + roundTexW, wp.y + pad + roundTexH));
+
+        // MM:SS (below round text, centered, with red flash at <=30s)
+        bool redFlash = (m_roundTimeLeft <= 30.0f) && (sin(ImGui::GetTime() * 4.0f) > 0.0);
+        ImU32 tc = redFlash ? IM_COL32(255, 60, 60, 255) : IM_COL32(255, 255, 255, 255);
+        ImVec2 ts = ImGui::CalcTextSize(timeBuf);
+        dl->AddText(ImVec2(wp.x + (winW - ts.x) * 0.5f, wp.y + pad + roundTexH),
+                    tc, timeBuf);
     }
     ImGui::End();
+
     ImGui::PopStyleColor();
     ImGui::PopStyleVar();
 }
@@ -438,6 +457,7 @@ void Player::drawSettlement(const Camera* camera)
             case Material::ID::Stick:      return "木棍";
             case Material::ID::WoodenSword:return "木剑";
             case Material::ID::RawMeat:    return "生肉";
+            case Material::ID::GoldBlock:  return "金块";
             default: return "未知";
         }
     };
@@ -449,8 +469,14 @@ void Player::drawSettlement(const Camera* camera)
     int survMin = survTotalSec / 60;
     int survSec = survTotalSec % 60;
 
+    const char* titleText = "撤离成功";
+    switch (m_settlementOutcome) {
+        case SettlementOutcome::Success: titleText = "撤离成功"; break;
+        case SettlementOutcome::TimeUp:  titleText = "时间耗尽"; break;
+        case SettlementOutcome::Death:   titleText = "你已死亡"; break;
+    }
     char titleBuf[64];
-    snprintf(titleBuf, sizeof(titleBuf), "═══ 第 %d 回合 结束 ═══", m_roundNumber);
+    snprintf(titleBuf, sizeof(titleBuf), "═══ %s ═══", titleText);
 
     char survBuf[64];
     snprintf(survBuf, sizeof(survBuf), "存活时间   %02d:%02d", survMin, survSec);
@@ -533,21 +559,30 @@ void Player::drawSettlement(const Camera* camera)
                      ImVec2(panelX + 20, panelY + 20),
                      ImVec2(panelX + 20 + texW, panelY + 20 + texH));
 
-        // Placeholder button at bottom
+        // "准备下一回合" button — clickable
         float btnW = 160.0f, btnH = 36.0f;
         float btnX = panelX + (panelW - btnW) * 0.5f;
         float btnY = panelY + panelH - btnH - 16.0f;
-        dl->AddRectFilled(ImVec2(btnX, btnY),
-                          ImVec2(btnX + btnW, btnY + btnH),
-                          IM_COL32(60, 60, 60, 200));
-        dl->AddRect(ImVec2(btnX, btnY),
-                    ImVec2(btnX + btnW, btnY + btnH),
-                    IM_COL32(150, 150, 150, 255));
-        // Button text (ASCII only for this Chinese label)
+
+        ImGui::SetCursorScreenPos(ImVec2(btnX, btnY));
+        ImGui::PushID("nextRound");
+        bool clicked = ImGui::InvisibleButton("##nextRoundBtn", ImVec2(btnW, btnH));
+        ImGui::PopID();
+
+        // Draw button visual
+        bool hovered = ImGui::IsItemHovered();
+        ImU32 btnBg = hovered ? IM_COL32(100, 100, 100, 220) : IM_COL32(60, 60, 60, 200);
+        ImU32 btnBorder = hovered ? IM_COL32(220, 220, 220, 255) : IM_COL32(150, 150, 150, 255);
+        dl->AddRectFilled(ImVec2(btnX, btnY), ImVec2(btnX + btnW, btnY + btnH), btnBg);
+        dl->AddRect(ImVec2(btnX, btnY), ImVec2(btnX + btnW, btnY + btnH), btnBorder);
         dl->AddText(ImGui::GetFont(), 18.0f,
                     ImVec2(btnX + 16, btnY + 6),
-                    IM_COL32(180, 180, 180, 255),
+                    IM_COL32(220, 220, 220, 255),
                     "准备下一回合");
+
+        if (clicked) {
+            m_requestNewRound = true;
+        }
     }
     ImGui::End();
 
@@ -679,8 +714,8 @@ void Player::draw(RenderMaster& master, const Camera* camera)
         if (m_swingTimer >= 0.3f) { m_isSwinging = false; m_swingTimer = 0.0f; }
     }
 
-    // --- HUD: Health Bar (above hotbar, below backpack) ---
-    if (!m_isDead)
+    // --- HUD: Health Bar (above hotbar, hidden when backpack open) ---
+    if (!m_isDead && !m_backpackOpen)
         drawHealthBar();
 
     // --- HUD: Timer + Round Counter (top-center) ---
@@ -1034,6 +1069,20 @@ void Player::draw(RenderMaster& master, const Camera* camera)
                 prev = pt;
             }
         }
+    }
+
+    // --- Extraction Countdown HUD ---
+    if (m_isExtracting) {
+        ImVec2 center(displaySize.x * 0.5f, displaySize.y * 0.5f);
+        auto* fg = ImGui::GetForegroundDrawList();
+        int secLeft = 5 - (int)m_extractionProgress;
+        if (secLeft < 0) secLeft = 0;
+        char buf[32];
+        snprintf(buf, sizeof(buf), "撤离中 %d 秒", secLeft + 1);
+        float textY = center.y + 30.0f;
+        ImVec2 textSize = ImGui::CalcTextSize(buf);
+        fg->AddText(ImVec2(center.x - textSize.x * 0.5f, textY),
+                    IM_COL32(255, 255, 100, 255), buf);
     }
 
     // --- Drop item icon rendering via ImGui overlay ---

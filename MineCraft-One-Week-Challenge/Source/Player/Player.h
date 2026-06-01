@@ -74,6 +74,7 @@ class Player : public Entity {
 
     // Death
     bool m_isDead = false;
+    float m_deathTimer = 0.0f;
 
     // HUD data (Entry 5 renders, Entry 6 fills)
     int m_roundNumber = 1;
@@ -81,6 +82,20 @@ class Player : public Entity {
     int m_pigmanKills = 0;
     std::unordered_map<Material::ID, int> m_roundCollection;
     bool m_roundActive = false;
+
+    // Extraction
+    float m_extractionProgress = 0.0f;
+    bool m_isExtracting = false;
+
+    enum class SettlementOutcome { Success, TimeUp, Death };
+    SettlementOutcome m_settlementOutcome = SettlementOutcome::Success;
+    bool m_requestNewRound = false;
+
+    void clearInventory() {
+        for (int i = 0; i < 17; i++) m_items[i] = ItemStack();
+        m_equipment[0] = ItemStack();
+        m_equipment[1] = ItemStack();
+    }
 
   private:
     void jump();
