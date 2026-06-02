@@ -1408,6 +1408,11 @@ void Player::renderWeapon()
     GLuint atlasID = atlas.getID();
     BlockId bId = eqM.toBlockID();
     auto uv = atlas.getTexture(BlockDatabase::get().getData(bId).getBlockData().texTopCoord);
+    // 斧头：X轴翻转
+    if (eqM.toolClass == 2) {
+        std::swap(uv[0], uv[2]);
+        std::swap(uv[4], uv[6]);
+    }
     auto displaySize = ImGui::GetIO().DisplaySize;
 
     // Lazy init shader + VAO
@@ -1485,10 +1490,18 @@ void Player::renderWeapon()
 
     // UVs match tri order: pivot(BR), topR, botL, topR, topL, botL
     // X-flipped: bottom-right=(xMin,yMax), top-right=(xMin,yMin), bottom-left=(xMax,yMax), top-left=(xMax,yMin)
-    // Vertices: pos(x,y) + uv(x,y) interleaved, 6 verts
-    float vd[] = {
-        0,0, uv[2],uv[3],  0,2, uv[2],uv[5],  -2,0, uv[0],uv[3],
-        0,2, uv[2],uv[5],  -2,2, uv[0],uv[5],  -2,0, uv[0],uv[3]};
+    // Vertices: pos(x,y) + uv(x,y) interleaved, 6 verts (24 floats)
+    float vd[24];
+    if (eqM.toolClass == 2) {
+        // 斧头顺时针90°：BR←TR, TR←TL, BL←BR, TL←BL
+        float a[] = {0,0, uv[0],uv[1], 0,2, uv[2],uv[3], -2,0, uv[6],uv[7],
+                     0,2, uv[2],uv[3], -2,2, uv[4],uv[5], -2,0, uv[6],uv[7]};
+        for (int i = 0; i < 24; ++i) vd[i] = a[i];
+    } else {
+        float a[] = {0,0, uv[2],uv[3], 0,2, uv[2],uv[5], -2,0, uv[0],uv[3],
+                     0,2, uv[2],uv[5], -2,2, uv[0],uv[5], -2,0, uv[0],uv[3]};
+        for (int i = 0; i < 24; ++i) vd[i] = a[i];
+    }
     glBindVertexArray(wpVAO);
     glBindBuffer(GL_ARRAY_BUFFER, wpVBO);
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vd), vd);
