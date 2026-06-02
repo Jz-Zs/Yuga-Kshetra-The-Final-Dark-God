@@ -41,7 +41,8 @@ void FlatPlainGenerator::generateTerrainFor(Chunk &chunk)
             int worldX = chunkX * CHUNK_SIZE + x;
             int worldZ = chunkZ * CHUNK_SIZE + z;
 
-            if (worldX >= MVP_WORLD_SIZE_X || worldZ >= MVP_WORLD_SIZE_Z) {
+            if (worldX < 0 || worldX >= MVP_WORLD_SIZE_X ||
+                worldZ < 0 || worldZ >= MVP_WORLD_SIZE_Z) {
                 continue;
             }
 
@@ -78,25 +79,26 @@ void FlatPlainGenerator::generateTerrainFor(Chunk &chunk)
         int cx = m_random.intInRange(0, CHUNK_SIZE - 1);
         int cy = m_random.intInRange(5, 20);
         int cz = m_random.intInRange(0, CHUNK_SIZE - 1);
-        int veinSize = m_random.intInRange(3, 7); // [3, 6]
+        int veinSize = m_random.intInRange(6, 11); // [6, 10]
         int axis = m_random.intInRange(0, 3); // 0=X, 1=Y, 2=Z
         int worldX = chunkX * CHUNK_SIZE + cx;
         int worldZ = chunkZ * CHUNK_SIZE + cz;
-        if (worldX >= MVP_WORLD_SIZE_X || worldZ >= MVP_WORLD_SIZE_Z) continue;
+        if (worldX < 0 || worldX >= MVP_WORLD_SIZE_X ||
+            worldZ < 0 || worldZ >= MVP_WORLD_SIZE_Z) continue;
 
         for (int step = 0; step < veinSize; step++) {
-            for (int dx = 0; dx < 2; dx++)
-                for (int dy = 0; dy < 2; dy++)
-                    for (int dz = 0; dz < 2; dz++) {
-                        int px = cx + dx, py = cy + dy, pz = cz + dz;
-                        if (px >= 0 && px < CHUNK_SIZE &&
-                            py >= 0 && py < 64 &&
-                            pz >= 0 && pz < CHUNK_SIZE) {
-                            if (chunk.getBlock(px, py, pz).id == (int)BlockId::Stone) {
-                                chunk.setBlock(px, py, pz, BlockId::IronOre);
-                            }
-                        }
-                    }
+            // 每步在 3×3×3 邻域内随机放 1 个铁矿，仅替换石头
+            int dx = m_random.intInRange(-1, 1);
+            int dy = m_random.intInRange(-1, 1);
+            int dz = m_random.intInRange(-1, 1);
+            int px = cx + dx, py = cy + dy, pz = cz + dz;
+            if (px >= 0 && px < CHUNK_SIZE &&
+                py >= 5 && py < 20 &&
+                pz >= 0 && pz < CHUNK_SIZE) {
+                if (chunk.getBlock(px, py, pz).id == (int)BlockId::Stone) {
+                    chunk.setBlock(px, py, pz, BlockId::IronOre);
+                }
+            }
             int dir = (m_random.intInRange(0, 5) < 3) ? 1 : -1;
             switch (axis) { case 0: cx += dir; break; case 1: cy += dir; break; case 2: cz += dir; break; }
             cx = std::clamp(cx, 0, CHUNK_SIZE - 1);

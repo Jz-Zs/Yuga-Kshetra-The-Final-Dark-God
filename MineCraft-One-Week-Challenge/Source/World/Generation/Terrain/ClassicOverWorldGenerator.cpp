@@ -178,29 +178,25 @@ void ClassicOverWorldGenerator::setBlocks(int maxHeight)
         int startY = m_random.intInRange(5, 20);
         int startZ = m_random.intInRange(0, CHUNK_SIZE - 1);
 
-        int veinSize = m_random.intInRange(3, 7); // [3, 6] ore blocks
+        int veinSize = m_random.intInRange(6, 11); // [6, 10] ore blocks
 
         // 随机主轴方向: 0=X, 1=Y, 2=Z
         int axis = m_random.intInRange(0, 3);
         int cx = startX, cy = startY, cz = startZ;
 
         for (int step = 0; step < veinSize; step++) {
-            // 在 (cx,cy,cz) 的 2×2×2 邻域内放置铁矿
-            for (int dx = 0; dx < 2; dx++)
-                for (int dy = 0; dy < 2; dy++)
-                    for (int dz = 0; dz < 2; dz++) {
-                        int px = cx + dx;
-                        int py = cy + dy;
-                        int pz = cz + dz;
-                        if (px >= 0 && px < CHUNK_SIZE &&
-                            py >= 0 && py < 64 &&
-                            pz >= 0 && pz < CHUNK_SIZE) {
-                            // 仅替换石头
-                            if (m_pChunk->getBlock(px, py, pz).id == (int)BlockId::Stone) {
-                                m_pChunk->setBlock(px, py, pz, BlockId::IronOre);
-                            }
-                        }
-                    }
+            // 每步在 3×3×3 邻域内随机放 1 个铁矿，仅替换石头
+            int dx = m_random.intInRange(-1, 1);
+            int dy = m_random.intInRange(-1, 1);
+            int dz = m_random.intInRange(-1, 1);
+            int px = cx + dx, py = cy + dy, pz = cz + dz;
+            if (px >= 0 && px < CHUNK_SIZE &&
+                py >= 0 && py < 64 &&
+                pz >= 0 && pz < CHUNK_SIZE) {
+                if (m_pChunk->getBlock(px, py, pz).id == (int)BlockId::Stone) {
+                    m_pChunk->setBlock(px, py, pz, BlockId::IronOre);
+                }
+            }
 
             // 沿主轴方向前进，允许随机偏移
             int dir = (m_random.intInRange(0, 5) < 3) ? 1 : -1; // 60%正向, 40%反向
