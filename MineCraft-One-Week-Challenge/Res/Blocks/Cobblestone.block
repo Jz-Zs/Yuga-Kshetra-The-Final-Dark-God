@@ -1,17 +1,17 @@
 Name
-Grass
+Cobblestone
 
 Id
-1
+17
 
 TexTop
-0 0
+2 1
 
 TexSide
-1 0
+1 1
 
 TexBottom
-2 0
+2 1
 
 Opaque
 1
@@ -26,4 +26,10 @@ Collidable
 1
 
 Hardness
-1.0
+1.2
+
+ToolClass
+1
+
+ToolLevel
+0

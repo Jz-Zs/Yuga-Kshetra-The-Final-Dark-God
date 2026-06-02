@@ -18,3 +18,12 @@ ShaderType
 
 Collidable
 1
+
+Hardness
+1.2
+
+ToolClass
+1
+
+ToolLevel
+0

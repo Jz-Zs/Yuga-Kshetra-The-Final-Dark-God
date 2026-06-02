@@ -1,5 +1,6 @@
 #include "ClassicOverWorldGenerator.h"
 
+#include <algorithm>
 #include <functional>
 #include <iostream>
 
@@ -169,6 +170,51 @@ void ClassicOverWorldGenerator::setBlocks(int maxHeight)
                     m_pChunk->setBlock(x, y, z, BlockId::Stone);
                 }
             }
+
+    // 入口7: 铁矿脉生成 — Z ∈ [5, 20), 每区块 2~4 个矿脉
+    int veinCount = m_random.intInRange(2, 5); // [2, 4] inclusive
+    for (int v = 0; v < veinCount; v++) {
+        int startX = m_random.intInRange(0, CHUNK_SIZE - 1);
+        int startY = m_random.intInRange(5, 20);
+        int startZ = m_random.intInRange(0, CHUNK_SIZE - 1);
+
+        int veinSize = m_random.intInRange(3, 7); // [3, 6] ore blocks
+
+        // 随机主轴方向: 0=X, 1=Y, 2=Z
+        int axis = m_random.intInRange(0, 3);
+        int cx = startX, cy = startY, cz = startZ;
+
+        for (int step = 0; step < veinSize; step++) {
+            // 在 (cx,cy,cz) 的 2×2×2 邻域内放置铁矿
+            for (int dx = 0; dx < 2; dx++)
+                for (int dy = 0; dy < 2; dy++)
+                    for (int dz = 0; dz < 2; dz++) {
+                        int px = cx + dx;
+                        int py = cy + dy;
+                        int pz = cz + dz;
+                        if (px >= 0 && px < CHUNK_SIZE &&
+                            py >= 0 && py < 64 &&
+                            pz >= 0 && pz < CHUNK_SIZE) {
+                            // 仅替换石头
+                            if (m_pChunk->getBlock(px, py, pz).id == (int)BlockId::Stone) {
+                                m_pChunk->setBlock(px, py, pz, BlockId::IronOre);
+                            }
+                        }
+                    }
+
+            // 沿主轴方向前进，允许随机偏移
+            int dir = (m_random.intInRange(0, 5) < 3) ? 1 : -1; // 60%正向, 40%反向
+            switch (axis) {
+                case 0: cx += dir; break;
+                case 1: cy += dir; break;
+                case 2: cz += dir; break;
+            }
+            // 钳制在区块范围内
+            cx = std::max(0, std::min(cx, CHUNK_SIZE - 1));
+            cy = std::max(5, std::min(cy, 19));
+            cz = std::max(0, std::min(cz, CHUNK_SIZE - 1));
+        }
+    }
 
     for (auto &plant : plants) {
         int x = plant.x;

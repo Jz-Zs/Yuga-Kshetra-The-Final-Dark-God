@@ -54,6 +54,27 @@ BlockData::BlockData(const std::string &fileName)
         else if (line == "Collidable") {
             inFile >> m_data.isCollidable;
         }
+        else if (line == "Hardness") {
+            inFile >> m_data.hardness;
+        }
+        else if (line == "ToolClass") {
+            int val;
+            inFile >> val;
+            m_data.requiredToolClass = static_cast<uint8_t>(val);
+        }
+        else if (line == "ToolLevel") {
+            int val;
+            inFile >> val;
+            m_data.requiredToolLevel = static_cast<uint8_t>(val);
+        }
+        else if (line == "DropBlock") {
+            int val;
+            inFile >> val;
+            m_data.dropBlockId = static_cast<BlockId>(val);
+        }
+        else if (line == "DropProb") {
+            inFile >> m_data.dropProbability;
+        }
         else if (line == "MeshType") {
             int id;
             inFile >> id;

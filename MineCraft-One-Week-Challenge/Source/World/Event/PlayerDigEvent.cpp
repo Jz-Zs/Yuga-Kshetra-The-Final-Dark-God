@@ -2,6 +2,7 @@
 
 #include "../../Item/Material.h"
 #include "../../Player/Player.h"
+#include "../../Util/Random.h"
 #include "../World.h"
 
 PlayerDigEvent::PlayerDigEvent(sf::Mouse::Button button,
@@ -31,7 +32,28 @@ void PlayerDigEvent::dig(World &world)
     switch (m_buttonPress) {
         case sf::Mouse::Button::Left: {
             auto block = world.getBlock(x, y, z);
-            world.spawnDrop(glm::ivec3(x, y, z), (BlockId)block.id);
+            auto& data = block.getData();
+
+            // Determine drop: use dropBlockId if set, otherwise drop self
+            BlockId dropId = (data.dropBlockId != BlockId::Air)
+                ? data.dropBlockId : (BlockId)block.id;
+
+            // Probability-based drop (use integer random for float probability)
+            bool shouldDrop = data.dropProbability >= 1.0f;
+            if (!shouldDrop) {
+                shouldDrop = RandomSingleton::get().intInRange(0, 99)
+                             < static_cast<int>(data.dropProbability * 100);
+            }
+            if (shouldDrop) {
+                world.spawnDrop(glm::ivec3(x, y, z), dropId);
+            }
+
+            // Special: OakLeaf 10% chance to also drop WildFruit
+            if (block.id == (int)BlockId::OakLeaf
+                && RandomSingleton::get().intInRange(0, 99) < 10) {
+                world.spawnDrop(glm::ivec3(x, y, z), BlockId::WildFruit);
+            }
+
             world.updateChunk(x, y, z);
             world.setBlock(x, y, z, 0);
             break;

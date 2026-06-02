@@ -1,11 +1,11 @@
 Name
-Oak Leaf
+StoneAxe
 
 Id
-5
+25
 
 TexAll
-6 0
+7 2
 
 Opaque
 0
@@ -14,10 +14,7 @@ MeshType
 0
 
 ShaderType
-2
+0
 
 Collidable
-1
-
-Hardness
-0.5
+0

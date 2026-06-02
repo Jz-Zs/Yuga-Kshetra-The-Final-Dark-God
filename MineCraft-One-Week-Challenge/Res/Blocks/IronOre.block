@@ -1,17 +1,11 @@
 Name
-Grass
+IronOre
 
 Id
-1
+16
 
-TexTop
-0 0
-
-TexSide
-1 0
-
-TexBottom
-2 0
+TexAll
+6 1
 
 Opaque
 1
@@ -26,4 +20,10 @@ Collidable
 1
 
 Hardness
-1.0
+1.5
+
+ToolClass
+1
+
+ToolLevel
+2

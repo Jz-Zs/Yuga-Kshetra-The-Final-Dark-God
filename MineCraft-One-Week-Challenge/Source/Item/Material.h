@@ -2,6 +2,7 @@
 #define MATERIAL_H_INCLUDED
 
 #include "../World/Block/BlockId.h"
+#include <cstdint>
 #include <string>
 
 #include "../Util/NonCopyable.h"
@@ -23,7 +24,21 @@ struct Material : public NonCopyable {
         Stick,
         WoodenSword,
         RawMeat,
-        GoldBlock
+        GoldBlock,
+
+        // 入口7 新增
+        Cobblestone,
+        IronOre,
+        IronIngot,
+        WildFruit,
+        StoneArrow,
+        WoodenPickaxe,
+        StonePickaxe,
+        IronPickaxe,
+        WoodenAxe,
+        StoneAxe,
+        IronAxe,
+        IronSword
     };
 
     const static Material NOTHING, GRASS_BLOCK, DIRT_BLOCK, STONE_BLOCK,
@@ -32,7 +47,13 @@ struct Material : public NonCopyable {
 
     const static Material STICK, WOODEN_SWORD, RAW_MEAT, GOLD_BLOCK;
 
-    Material(Material::ID id, int maxStack, bool isBlock, std::string &&name);
+    const static Material COBBLESTONE, IRON_ORE_ITEM, IRON_INGOT, WILD_FRUIT,
+        STONE_ARROW, WOODEN_PICKAXE, STONE_PICKAXE, IRON_PICKAXE,
+        WOODEN_AXE, STONE_AXE, IRON_AXE, IRON_SWORD;
+
+    Material(Material::ID id, int maxStack, bool isBlock, std::string &&name,
+             uint8_t toolClass = 0, uint8_t toolTier = 0,
+             float miningMultiplier = 1.0f, int attackBonus = 0);
 
     BlockId toBlockID() const;
 
@@ -42,6 +63,12 @@ struct Material : public NonCopyable {
     const int maxStackSize;
     const bool isBlock;
     const std::string name;
+
+    // 入口7: 工具/属性系统
+    uint8_t toolClass = 0;        // 0=None, 1=Pickaxe, 2=Axe, 3=Sword
+    uint8_t toolTier = 0;         // 0=非工具, 1=木, 2=石, 3=铁, 4=钻石
+    float miningMultiplier = 1.0f; // 挖掘倍率
+    int attackBonus = 0;           // 攻击加成
 };
 
 namespace std {

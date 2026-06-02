@@ -1,11 +1,11 @@
 Name
-Oak Leaf
+WildFruit
 
 Id
-5
+19
 
 TexAll
-6 0
+1 2
 
 Opaque
 0
@@ -14,10 +14,7 @@ MeshType
 0
 
 ShaderType
-2
+0
 
 Collidable
-1
-
-Hardness
-0.5
+0

@@ -149,9 +149,18 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
 
                     auto block = m_world.getBlock(x, y, z);
                     auto id = (BlockId)block.id;
+                    auto& data = block.getData();
 
-                    if (id != BlockId::Air && id != BlockId::Water && id != BlockId::GoldBlock)
+                    if (id != BlockId::Air && id != BlockId::Water
+                        && data.requiredToolLevel != 255)
                     {
+                        // Check tool tier requirement
+                        const auto& eqM = m_player.m_equipment[m_player.m_equipSlot].getMaterial();
+                        if (data.requiredToolLevel > 0 && eqM.toolTier < data.requiredToolLevel)
+                        {
+                            break; // Insufficient tool — ray blocked
+                        }
+
                         if (!m_player.m_isMining
                             || m_player.m_miningTarget.x != x
                             || m_player.m_miningTarget.y != y
@@ -170,7 +179,25 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
         // Mining progress — only while holding left button
         if (leftPressed && m_player.m_isMining && m_player.m_miningProgress < 1.0f)
         {
-            m_player.m_miningProgress += delta / 0.3f;
+            // Get target block properties for mining speed
+            auto targetBlock = m_world.getBlock(
+                m_player.m_miningTarget.x,
+                m_player.m_miningTarget.y,
+                m_player.m_miningTarget.z);
+            auto& targetData = targetBlock.getData();
+
+            // Calculate mining speed based on tool match
+            const auto& eqM = m_player.m_equipment[m_player.m_equipSlot].getMaterial();
+            float multiplier = 1.0f;
+            // If block requires a tool class and equipped tool matches, apply multiplier
+            if (targetData.requiredToolClass != 0
+                && eqM.toolClass == targetData.requiredToolClass)
+            {
+                multiplier = eqM.miningMultiplier;
+            }
+            float digTime = targetData.hardness * 0.3f / multiplier;
+            m_player.m_miningProgress += delta / digTime;
+
             if (m_player.m_miningProgress >= 1.0f)
             {
                 // Dig current block
@@ -193,8 +220,17 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
                     if (x == prevTarget.x && y == prevTarget.y && z == prevTarget.z) continue;
                     auto block = m_world.getBlock(x, y, z);
                     auto id = (BlockId)block.id;
-                    if (id != BlockId::Air && id != BlockId::Water && id != BlockId::GoldBlock)
+                    auto& data = block.getData();
+                    if (id != BlockId::Air && id != BlockId::Water
+                        && data.requiredToolLevel != 255)
                     {
+                        // Check tool tier requirement
+                        const auto& eqM = m_player.m_equipment[m_player.m_equipSlot].getMaterial();
+                        if (data.requiredToolLevel > 0 && eqM.toolTier < data.requiredToolLevel)
+                        {
+                            break; // Insufficient tool — ray blocked
+                        }
+
                         m_player.m_isMining = true;
                         m_player.m_miningTarget = {x, y, z};
                         break;

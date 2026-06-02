@@ -25,6 +25,18 @@ BlockDatabase::BlockDatabase()
         std::make_unique<DefaultBlock>("RawMeat");
     m_blocks[(int)BlockId::GoldBlock] =
         std::make_unique<DefaultBlock>("GoldBlock");
+    m_blocks[(int)BlockId::IronOre] = std::make_unique<DefaultBlock>("IronOre");
+    m_blocks[(int)BlockId::Cobblestone] = std::make_unique<DefaultBlock>("Cobblestone");
+    m_blocks[(int)BlockId::IronIngot] = std::make_unique<DefaultBlock>("IronIngot");
+    m_blocks[(int)BlockId::WildFruit] = std::make_unique<DefaultBlock>("WildFruit");
+    m_blocks[(int)BlockId::StoneArrow] = std::make_unique<DefaultBlock>("StoneArrow");
+    m_blocks[(int)BlockId::WoodenPickaxe] = std::make_unique<DefaultBlock>("WoodenPickaxe");
+    m_blocks[(int)BlockId::StonePickaxe] = std::make_unique<DefaultBlock>("StonePickaxe");
+    m_blocks[(int)BlockId::IronPickaxe] = std::make_unique<DefaultBlock>("IronPickaxe");
+    m_blocks[(int)BlockId::WoodenAxe] = std::make_unique<DefaultBlock>("WoodenAxe");
+    m_blocks[(int)BlockId::StoneAxe] = std::make_unique<DefaultBlock>("StoneAxe");
+    m_blocks[(int)BlockId::IronAxe] = std::make_unique<DefaultBlock>("IronAxe");
+    m_blocks[(int)BlockId::IronSword] = std::make_unique<DefaultBlock>("IronSword");
 }
 
 BlockDatabase &BlockDatabase::get()

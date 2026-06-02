@@ -23,6 +23,18 @@ enum class BlockId : Block_t {
     WoodenSword = 13,
     RawMeat = 14,
     GoldBlock = 15,
+    IronOre = 16,
+    Cobblestone = 17,
+    IronIngot = 18,
+    WildFruit = 19,
+    StoneArrow = 20,
+    WoodenPickaxe = 21,
+    StonePickaxe = 22,
+    IronPickaxe = 23,
+    WoodenAxe = 24,
+    StoneAxe = 25,
+    IronAxe = 26,
+    IronSword = 27,
 
     NUM_TYPES
 };

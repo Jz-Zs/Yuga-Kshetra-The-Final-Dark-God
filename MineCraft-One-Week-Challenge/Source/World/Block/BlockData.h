@@ -30,6 +30,12 @@ struct BlockDataHolder : public NonCopyable {
 
     bool isOpaque;
     bool isCollidable;
+
+    float hardness = 1.0f;               // 挖掘时间倍率
+    uint8_t requiredToolClass = 0;       // 0=None, 1=Pickaxe, 2=Axe
+    uint8_t requiredToolLevel = 0;       // 0=任意, 1=木, 2=石, 3=铁, 4=钻石, 255=不可破坏
+    BlockId dropBlockId = BlockId::Air;  // Air=掉落自身BlockId
+    float dropProbability = 1.0f;        // 掉落概率，默认100%
 };
 
 class BlockData : public NonCopyable {

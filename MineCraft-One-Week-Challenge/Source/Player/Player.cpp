@@ -896,6 +896,15 @@ void Player::draw(RenderMaster& master, const Camera* camera)
                     if (slotIndex >= 17)
                         ImGui::GetWindowDrawList()->AddRect(p0, p1, IM_COL32(255, 215, 0, 255), 0.0f, 0, 2.0f);
 
+                    // Right-click to eat wild fruit (restore 5 HP)
+                    if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+                        const auto& fruitMat = m_items[slotIndex].getMaterial();
+                        if (fruitMat.id == Material::ID::WildFruit && m_items[slotIndex].getNumInStack() > 0) {
+                            m_hp = std::min(m_hp + 5, m_maxHp);
+                            m_items[slotIndex].remove();
+                        }
+                    }
+
                     const auto& mat = m_items[slotIndex].getMaterial();
                     if (mat.id != Material::ID::Nothing && ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
                         ImGui::SetDragDropPayload("INV_SLOT", &slotIndex, sizeof(int));
@@ -938,6 +947,15 @@ void Player::draw(RenderMaster& master, const Camera* camera)
             ImVec2 p1(p0.x + slotSize, p0.y + slotSize);
             drawSlot(slotIndex, p0, p1, true);
             drawQuantity(slotIndex, p1);
+
+            // Right-click to eat wild fruit (restore 5 HP)
+            if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+                const auto& fruitMat = m_items[slotIndex].getMaterial();
+                if (fruitMat.id == Material::ID::WildFruit && m_items[slotIndex].getNumInStack() > 0) {
+                    m_hp = std::min(m_hp + 5, m_maxHp);
+                    m_items[slotIndex].remove();
+                }
+            }
 
             // Drag-and-drop on hotbar too
             const auto& mat = m_items[slotIndex].getMaterial();
@@ -1294,12 +1312,8 @@ void Player::renderWeapon()
 
 int Player::getAttackPower() const
 {
-    int weaponAtk = 0;
     const auto& eqM = m_equipment[m_equipSlot].getMaterial();
-    if (eqM.id == Material::ID::WoodenSword) {
-        weaponAtk = 10;
-    }
-    return m_baseAttack + weaponAtk;
+    return m_baseAttack + eqM.attackBonus;
 }
 
 void Player::takeDamage(int amount, glm::vec3 knockbackDir)
