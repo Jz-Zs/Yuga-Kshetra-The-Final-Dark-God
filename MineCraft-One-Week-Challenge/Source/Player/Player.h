@@ -140,6 +140,7 @@ class Player : public Entity {
     // Software bitmap text renderer
     BitmapText m_bitmapText;
     BitmapText m_hudText;          // Chinese text for timer + settlement screen
+    BitmapText m_buttonText;       // Chinese text for settlement button
 
     std::vector<ItemDropEntity>* m_pDropItems = nullptr;
 };

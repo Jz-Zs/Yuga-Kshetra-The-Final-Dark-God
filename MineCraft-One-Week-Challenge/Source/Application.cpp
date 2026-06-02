@@ -150,7 +150,7 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
                     auto block = m_world.getBlock(x, y, z);
                     auto id = (BlockId)block.id;
 
-                    if (id != BlockId::Air && id != BlockId::Water)
+                    if (id != BlockId::Air && id != BlockId::Water && id != BlockId::GoldBlock)
                     {
                         if (!m_player.m_isMining
                             || m_player.m_miningTarget.x != x
@@ -193,7 +193,7 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
                     if (x == prevTarget.x && y == prevTarget.y && z == prevTarget.z) continue;
                     auto block = m_world.getBlock(x, y, z);
                     auto id = (BlockId)block.id;
-                    if (id != BlockId::Air && id != BlockId::Water)
+                    if (id != BlockId::Air && id != BlockId::Water && id != BlockId::GoldBlock)
                     {
                         m_player.m_isMining = true;
                         m_player.m_miningTarget = {x, y, z};
@@ -251,8 +251,8 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
         auto ec = m_world.getExtractionCenter();
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
-                if (px == ec.x + dx && pz == ec.z + dz && py == ec.y) {
-                    auto footBlock = m_world.getBlock(px, py, pz);
+                if (px == ec.x + dx && pz == ec.z + dz && py == ec.y + 1) {
+                    auto footBlock = m_world.getBlock(px, py - 1, pz);
                     if (footBlock.id == (int)BlockId::GoldBlock) {
                         onGold = true;
                     }
@@ -290,11 +290,11 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
         }
         // Spawn extraction point at 300s remaining (5 minutes elapsed)
         static bool extractionSpawned = false;
-        if (m_player.m_roundTimeLeft <= 300.0f && !extractionSpawned && !m_world.isExtractionActive()) {
+        if (m_player.m_roundTimeLeft <= 600.0f && !extractionSpawned && !m_world.isExtractionActive()) {
             m_world.placeExtractionPoint();
             extractionSpawned = true;
         }
-        if (m_player.m_roundTimeLeft > 300.0f) {
+        if (m_player.m_roundTimeLeft > 600.0f) {
             extractionSpawned = false;
         }
     }
@@ -316,7 +316,7 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
         m_player.m_isExtracting = false;
         m_player.m_pigmanKills = 0;
         m_player.m_roundCollection.clear();
-        m_player.m_roundTimeLeft = 600.0f;
+        m_player.m_roundTimeLeft = 600.01f; // >600 to reset extractionSpawned flag
         m_player.m_roundActive = true;
         m_world.resetWorld(m_camera, m_player);
     }

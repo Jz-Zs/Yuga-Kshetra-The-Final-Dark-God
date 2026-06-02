@@ -54,10 +54,7 @@ void World::resetWorld(const Camera &camera, Player &player)
 
     m_extractionActive = false;
 
-    // 4. Reload chunks around camera
-    loadChunks(camera);
-
-    // 5. Spawn initial pigmen (max 8)
+    // 4. Spawn initial pigmen (max 8)
     m_pigmen.clear();
     for (int i = 0; i < 8; i++) {
         spawnPigman(player, 15.0f);

@@ -371,30 +371,24 @@ void Player::drawTimer()
     int minutes = (int)m_roundTimeLeft / 60;
     int seconds = (int)m_roundTimeLeft % 60;
 
-    // Cached round text via BitmapText (only re-render when round changes)
-    static int lastRound = -1;
-    static GLuint roundTexId = 0;
-    static int roundTexW = 0, roundTexH = 0;
-    if ((int)m_roundNumber != lastRound) {
-        lastRound = (int)m_roundNumber;
-        char buf[32];
-        snprintf(buf, sizeof(buf), "第 %d 回合", (int)m_roundNumber);
-        m_hudText.setFontSize(36.0f);
-        roundTexW = m_hudText.measureTextWidth(buf) + 12;
-        roundTexH = (int)(36.0f * 1.1f) + 4;
-        std::vector<std::string> lines = { buf };
-        roundTexId = m_hudText.update(lines, roundTexW, roundTexH, true);
-        m_hudText.setFontSize(24.0f);
-    }
-
-    char timeBuf[16];
+    // Build two lines: round text (30px) + MM:SS (same size), via BitmapText
+    m_hudText.setFontSize(30.0f);
+    char roundBuf[32], timeBuf[16];
+    snprintf(roundBuf, sizeof(roundBuf), "第 %d 回合", (int)m_roundNumber);
     snprintf(timeBuf, sizeof(timeBuf), "%02d:%02d", minutes, seconds);
 
-    // Window sized to fit both texts stacked (round on top, MM:SS below)
+    int roundW = m_hudText.measureTextWidth(roundBuf);
+    int timeW  = m_hudText.measureTextWidth(timeBuf);
+    int texW = std::max(roundW, timeW) + 12;
+    int lineH = (int)(30.0f * 1.1f);
+    int texH = 4 + lineH * 2 + 4;
+
+    std::vector<std::string> lines = { roundBuf, timeBuf };
+    GLuint texId = m_hudText.update(lines, texW, texH, true);
+
     const float pad = 4.0f;
-    const float timeH = 30.0f;
-    const float winW = (float)roundTexW + pad * 2;
-    const float winH = (float)roundTexH + timeH + pad * 2;
+    const float winW = (float)texW + pad * 2;
+    const float winH = (float)texH + pad * 2;
     float winX = (displaySize.x - winW) * 0.5f;
     float winY = 6.0f;
 
@@ -411,18 +405,19 @@ void Player::drawTimer()
         ImVec2 wp = ImGui::GetWindowPos();
         auto* dl = ImGui::GetWindowDrawList();
 
-        // Round text (top, centered) via BitmapText image
-        if (roundTexId)
-            dl->AddImage((ImTextureID)(intptr_t)roundTexId,
-                         ImVec2(wp.x + pad, wp.y + pad),
-                         ImVec2(wp.x + pad + roundTexW, wp.y + pad + roundTexH));
-
-        // MM:SS (below round text, centered, with red flash at <=30s)
+        // Red flash background for MM:SS line when <= 30s
         bool redFlash = (m_roundTimeLeft <= 30.0f) && (sin(ImGui::GetTime() * 4.0f) > 0.0);
-        ImU32 tc = redFlash ? IM_COL32(255, 60, 60, 255) : IM_COL32(255, 255, 255, 255);
-        ImVec2 ts = ImGui::CalcTextSize(timeBuf);
-        dl->AddText(ImVec2(wp.x + (winW - ts.x) * 0.5f, wp.y + pad + roundTexH),
-                    tc, timeBuf);
+        if (redFlash) {
+            float flashY = wp.y + pad + 4 + lineH;
+            dl->AddRectFilled(ImVec2(wp.x + pad, flashY),
+                              ImVec2(wp.x + pad + texW, flashY + lineH),
+                              IM_COL32(200, 40, 40, 180));
+        }
+
+        if (texId)
+            dl->AddImage((ImTextureID)(intptr_t)texId,
+                         ImVec2(wp.x + pad, wp.y + pad),
+                         ImVec2(wp.x + pad + texW, wp.y + pad + texH));
     }
     ImGui::End();
 
@@ -522,8 +517,9 @@ void Player::drawSettlement(const Camera* camera)
     }
 
     int texW = 320;
-    int lineH = 28;
+    int lineH = 22;
     int texH = 8 + (int)textLines.size() * lineH + 8;
+    m_hudText.setFontSize(20.0f);
     GLuint hudTexId = m_hudText.update(textLines, texW, texH);
 
     // ================================================================
@@ -564,6 +560,13 @@ void Player::drawSettlement(const Camera* camera)
         float btnX = panelX + (panelW - btnW) * 0.5f;
         float btnY = panelY + panelH - btnH - 16.0f;
 
+        // Render button text via BitmapText (Chinese-capable, separate instance)
+        m_buttonText.setFontSize(18.0f);
+        std::vector<std::string> btnLines = { "准备下一回合" };
+        int btnTexW = m_buttonText.measureTextWidth("准备下一回合") + 12;
+        int btnTexH = (int)(18.0f * 1.1f) + 4;
+        GLuint btnTexId = m_buttonText.update(btnLines, btnTexW, btnTexH, true);
+
         ImGui::SetCursorScreenPos(ImVec2(btnX, btnY));
         ImGui::PushID("nextRound");
         bool clicked = ImGui::InvisibleButton("##nextRoundBtn", ImVec2(btnW, btnH));
@@ -575,10 +578,15 @@ void Player::drawSettlement(const Camera* camera)
         ImU32 btnBorder = hovered ? IM_COL32(220, 220, 220, 255) : IM_COL32(150, 150, 150, 255);
         dl->AddRectFilled(ImVec2(btnX, btnY), ImVec2(btnX + btnW, btnY + btnH), btnBg);
         dl->AddRect(ImVec2(btnX, btnY), ImVec2(btnX + btnW, btnY + btnH), btnBorder);
-        dl->AddText(ImGui::GetFont(), 18.0f,
-                    ImVec2(btnX + 16, btnY + 6),
-                    IM_COL32(220, 220, 220, 255),
-                    "准备下一回合");
+
+        // Button text centered in button area
+        if (btnTexId) {
+            float textX = btnX + (btnW - btnTexW) * 0.5f;
+            float textY = btnY + (btnH - btnTexH) * 0.5f;
+            dl->AddImage((ImTextureID)(intptr_t)btnTexId,
+                         ImVec2(textX, textY),
+                         ImVec2(textX + btnTexW, textY + btnTexH));
+        }
 
         if (clicked) {
             m_requestNewRound = true;
