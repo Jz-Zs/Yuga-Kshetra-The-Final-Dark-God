@@ -56,11 +56,22 @@ class Player : public Entity {
     bool m_isMining = false;
     glm::ivec3 m_miningTarget{0, -999, 0};
 
+    // 食用进度（长按右键吃野果）
+    float m_eatProgress = 0.0f;
+    bool m_isEating = false;
+
+    // 丢弃确认（Shift+右键）
+    int m_discardPending = -1; // slot index, -1 = none
+    float m_discardMouseX = 0, m_discardMouseY = 0; // mouse position when triggered
+
     // 输入处理
     void processRKey();
 
     float getMiningProgress() const { return m_miningProgress; }
     bool isMining() const { return m_isMining; }
+    float getEatProgress() const { return m_eatProgress; }
+    bool isEating() const { return m_isEating; }
+    void updateEating(float dt, bool rightHeld);
     bool isBackpackOpen() const { return m_backpackOpen; }
     bool isMouseLockedForUI() const { return m_mouseLocked && !m_backpackOpen; }
     void triggerSwing() { m_isSwinging = true; m_swingTimer = 0.0f; }
@@ -141,6 +152,7 @@ class Player : public Entity {
     BitmapText m_bitmapText;
     BitmapText m_hudText;          // Chinese text for timer + settlement screen
     BitmapText m_buttonText;       // Chinese text for settlement button
+    BitmapText m_discardText;      // Chinese text for discard confirmation popup
 
     std::vector<ItemDropEntity>* m_pDropItems = nullptr;
 };

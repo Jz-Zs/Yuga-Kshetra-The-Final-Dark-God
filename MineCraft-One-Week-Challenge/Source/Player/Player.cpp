@@ -35,8 +35,11 @@ Player::Player()
     {
         m_items.emplace_back(Material::NOTHING, 0);
     }
-    m_items[0] = ItemStack(Material::WOODEN_SWORD, 1);  // 开局测试用
-    m_equipment[0] = ItemStack(Material::WOODEN_SWORD, 1);  // 主手装备
+    // 开局测试用：快捷栏放木剑、木镐、木斧各一把
+    m_items[0] = ItemStack(Material::WOODEN_SWORD, 1);
+    m_items[1] = ItemStack(Material::WOODEN_PICKAXE, 1);
+    m_items[2] = ItemStack(Material::WOODEN_AXE, 1);
+    m_equipment[0] = ItemStack(Material::WOODEN_SWORD, 1);  // 主手装备木剑
     for (int i = 0; i < 9; i++)
     {
         m_craftGrid[i] = ItemStack(Material::NOTHING, 0);
@@ -754,6 +757,7 @@ void Player::draw(RenderMaster& master, const Camera* camera)
     if (!m_isDead && !m_backpackOpen)
         drawHealthBar();
 
+
     // --- HUD: Timer + Round Counter (top-center) ---
     if (m_roundActive && !m_isDead)
         drawTimer();
@@ -833,7 +837,7 @@ void Player::draw(RenderMaster& master, const Camera* camera)
                         ImGui::EndDragDropTarget();
                     }
                     if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-                        if (ImGui::GetIO().KeyShift) {
+                        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LShift) || sf::Keyboard::isKeyPressed(sf::Keyboard::Key::RShift)) {
                             // Shift+Click: quick-add from hotbar to this grid slot
                             const auto& hm = m_items[m_heldItem].getMaterial();
                             if (hm.id != Material::ID::Nothing) {
@@ -924,14 +928,6 @@ void Player::draw(RenderMaster& master, const Camera* camera)
                     if (slotIndex >= 17)
                         ImGui::GetWindowDrawList()->AddRect(p0, p1, IM_COL32(255, 215, 0, 255), 0.0f, 0, 2.0f);
 
-                    // Right-click to eat wild fruit (restore 5 HP)
-                    if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-                        const auto& fruitMat = m_items[slotIndex].getMaterial();
-                        if (fruitMat.id == Material::ID::WildFruit && m_items[slotIndex].getNumInStack() > 0) {
-                            m_hp = std::min(m_hp + 5, m_maxHp);
-                            m_items[slotIndex].remove();
-                        }
-                    }
 
                     const auto& mat = m_items[slotIndex].getMaterial();
                     if (mat.id != Material::ID::Nothing && ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
@@ -947,6 +943,15 @@ void Player::draw(RenderMaster& master, const Camera* camera)
                         const ImGuiPayload* pl = ImGui::AcceptDragDropPayload("INV_SLOT");
                         if (pl) { int src = *(const int*)pl->Data; std::swap(m_items[src], m_items[slotIndex]); }
                         ImGui::EndDragDropTarget();
+                    }
+                    // Shift+右键 → 丢弃确认（用坐标判定hover）
+                    ImVec2 mp = ImGui::GetIO().MousePos;
+                    if (mat.id != Material::ID::Nothing
+                        && mp.x >= p0.x && mp.x <= p1.x && mp.y >= p0.y && mp.y <= p1.y
+                        && ImGui::IsMouseClicked(ImGuiMouseButton_Right)
+                        && (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LShift) || sf::Keyboard::isKeyPressed(sf::Keyboard::Key::RShift))) {
+                        m_discardPending = slotIndex;
+                        m_discardMouseX = mp.x; m_discardMouseY = mp.y;
                     }
                     ImGui::PopID();
                 }
@@ -976,15 +981,6 @@ void Player::draw(RenderMaster& master, const Camera* camera)
             drawSlot(slotIndex, p0, p1, true);
             drawQuantity(slotIndex, p1);
 
-            // Right-click to eat wild fruit (restore 5 HP)
-            if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-                const auto& fruitMat = m_items[slotIndex].getMaterial();
-                if (fruitMat.id == Material::ID::WildFruit && m_items[slotIndex].getNumInStack() > 0) {
-                    m_hp = std::min(m_hp + 5, m_maxHp);
-                    m_items[slotIndex].remove();
-                }
-            }
-
             // Drag-and-drop on hotbar too
             const auto& mat = m_items[slotIndex].getMaterial();
             if (mat.id != Material::ID::Nothing &&
@@ -1009,11 +1005,145 @@ void Player::draw(RenderMaster& master, const Camera* camera)
                 }
                 ImGui::EndDragDropTarget();
             }
+            // Shift+右键 → 丢弃确认（用坐标判定hover）
+            ImVec2 mp2 = ImGui::GetIO().MousePos;
+            if (mat.id != Material::ID::Nothing
+                && mp2.x >= p0.x && mp2.x <= p1.x && mp2.y >= p0.y && mp2.y <= p1.y
+                && ImGui::IsMouseClicked(ImGuiMouseButton_Right)
+                && (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LShift) || sf::Keyboard::isKeyPressed(sf::Keyboard::Key::RShift))) {
+                m_discardPending = slotIndex;
+                m_discardMouseX = mp2.x; m_discardMouseY = mp2.y;
+            }
             ImGui::PopID();
         }
     }
     ImGui::End();
     ImGui::PopStyleVar();
+
+    // --- 丢弃确认弹窗（Shift+右键触发）---
+    if (m_discardPending >= 0 && m_discardPending < 20) {
+        const auto& dm = m_items[m_discardPending].getMaterial();
+        if (dm.id == Material::ID::Nothing) {
+            m_discardPending = -1;
+        } else {
+            auto& io = ImGui::GetIO();
+
+            // cnName helper
+            auto cnName = [](Material::ID id) -> std::string {
+                switch (id) {
+                    case Material::ID::Stone: return "石材";
+                    case Material::ID::Dirt: return "泥土";
+                    case Material::ID::Grass: return "草方块";
+                    case Material::ID::OakBark: return "木材";
+                    case Material::ID::OakLeaf: return "树叶";
+                    case Material::ID::Sand: return "沙子";
+                    case Material::ID::Stick: return "木棍";
+                    case Material::ID::WoodenSword: return "木剑";
+                    case Material::ID::RawMeat: return "生肉";
+                    case Material::ID::GoldBlock: return "金块";
+                    case Material::ID::Cobblestone: return "圆石";
+                    case Material::ID::IronOre: return "铁矿";
+                    case Material::ID::IronIngot: return "铁锭";
+                    case Material::ID::WildFruit: return "野果";
+                    case Material::ID::StoneArrow: return "石箭矢";
+                    case Material::ID::WoodenPickaxe: return "木镐";
+                    case Material::ID::StonePickaxe: return "石镐";
+                    case Material::ID::IronPickaxe: return "铁镐";
+                    case Material::ID::WoodenAxe: return "木斧";
+                    case Material::ID::StoneAxe: return "石斧";
+                    case Material::ID::IronAxe: return "铁斧";
+                    case Material::ID::IronSword: return "铁剑";
+                    default: return "物品";
+                }
+            };
+            char qbuf[128];
+            snprintf(qbuf, sizeof(qbuf), "丢弃 %s x%d？",
+                     cnName(dm.id).c_str(), m_items[m_discardPending].getNumInStack());
+
+            // Measure text widths for precise button placement
+            std::string btnLine = "[确认]        [取消]";
+            m_discardText.setFontSize(18.0f);
+            int tw = m_discardText.measureTextWidth(qbuf);
+            int fullBtnW = m_discardText.measureTextWidth(btnLine);
+            int yesW = m_discardText.measureTextWidth("[确认]");
+            int noW  = m_discardText.measureTextWidth("[取消]");
+            int maxW = std::max(tw, fullBtnW) + 12;
+            maxW = std::max(maxW, 180);
+            int lineH = (int)(18.0f * 1.1f);
+            int texW = maxW;
+            int texH = 8 + lineH * 2 + 4;
+
+            std::vector<std::string> lines = { qbuf, btnLine };
+            GLuint texId = m_discardText.update(lines, texW, texH, true);
+
+            float popupW = (float)maxW + 16.0f;
+            float popupH = (float)texH + 16.0f;
+            float px = m_discardMouseX + 12.0f;
+            float py = m_discardMouseY - popupH - 8.0f;
+            if (px + popupW > io.DisplaySize.x) px = io.DisplaySize.x - popupW - 8.0f;
+            if (py < 0.0f) py = m_discardMouseY + 16.0f;
+
+            auto* fg = ImGui::GetForegroundDrawList();
+            fg->AddRectFilled(ImVec2(px, py), ImVec2(px + popupW, py + popupH),
+                              IM_COL32(20, 20, 20, 240));
+            fg->AddRect(ImVec2(px, py), ImVec2(px + popupW, py + popupH),
+                        IM_COL32(100, 100, 100, 255));
+            if (texId)
+                fg->AddImage((ImTextureID)(intptr_t)texId,
+                             ImVec2(px + 8, py + 8),
+                             ImVec2(px + 8 + texW, py + 8 + texH));
+
+            // Button positions: text is centered in texW, line 2 at y = 4 + lineH within texture
+            float line2X = px + 8.0f + (texW - fullBtnW) * 0.5f; // centered line start
+            float line2Y = py + 8.0f + (float)lineH;
+            float btnH = (float)lineH;
+
+            float yesX = line2X;
+            float noX  = line2X + (float)(fullBtnW - noW);
+
+            ImVec2 mousePos = io.MousePos;
+            bool hoverYes = mousePos.x >= yesX && mousePos.x <= yesX + yesW
+                         && mousePos.y >= line2Y && mousePos.y <= line2Y + btnH;
+            bool hoverNo  = mousePos.x >= noX && mousePos.x <= noX + noW
+                         && mousePos.y >= line2Y && mousePos.y <= line2Y + btnH;
+
+            if (hoverYes)
+                fg->AddRectFilled(ImVec2(yesX, line2Y), ImVec2(yesX + yesW, line2Y + btnH),
+                                  IM_COL32(80, 80, 80, 180));
+            if (hoverNo)
+                fg->AddRectFilled(ImVec2(noX, line2Y), ImVec2(noX + noW, line2Y + btnH),
+                                  IM_COL32(80, 80, 80, 180));
+
+            ImGui::SetNextWindowPos(ImVec2(px, py), ImGuiCond_Always);
+            ImGui::SetNextWindowSize(ImVec2(popupW, popupH), ImGuiCond_Always);
+            ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
+            int popupFlags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+                             ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar |
+                             ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoBackground;
+            if (ImGui::Begin("DiscardConfirm", nullptr, popupFlags)) {
+                ImGui::SetCursorPos(ImVec2(yesX - px, line2Y - py));
+                if (ImGui::InvisibleButton("DYes", ImVec2((float)yesW, btnH))) {
+                    m_items[m_discardPending] = ItemStack(Material::NOTHING, 0);
+                    m_discardPending = -1;
+                }
+                ImGui::SetCursorPos(ImVec2(noX - px, line2Y - py));
+                if (ImGui::InvisibleButton("DNo", ImVec2((float)noW, btnH))) {
+                    m_discardPending = -1;
+                }
+                if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+                    m_discardPending = -1;
+            }
+            ImGui::End();
+            ImGui::PopStyleColor();
+
+            // Cancel on left-click outside the popup
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                ImVec2 mp = io.MousePos;
+                if (mp.x < px || mp.x > px + popupW || mp.y < py || mp.y > py + popupH)
+                    m_discardPending = -1;
+            }
+        }
+    }
 
     // --- Equipment window (2 slots, left of hotbar) ---
     {
@@ -1122,6 +1252,36 @@ void Player::draw(RenderMaster& master, const Camera* camera)
                 fg->AddLine(prev, pt, IM_COL32(255, 255, 255, 220), 4.0f);
                 prev = pt;
             }
+        }
+
+        // 食用进度环（长按右键吃野果）
+        if (m_isEating && m_eatProgress > 0.0f)
+        {
+            float r = 16.0f, pi = 3.14159265f;
+            int segs = 36;
+            float full = m_eatProgress * 2.0f * pi;
+            float startAngle = -pi / 2.0f;
+            ImVec2 prev(center.x + r * cosf(startAngle),
+                        center.y + r * sinf(startAngle));
+            for (int i = 1; i <= segs; i++)
+            {
+                float a = (float)i / (float)segs * full;
+                ImVec2 pt(center.x + r * cosf(startAngle + a),
+                          center.y + r * sinf(startAngle + a));
+                fg->AddLine(prev, pt, IM_COL32(100, 220, 100, 220), 4.0f);
+                prev = pt;
+            }
+            // "正在食用" 提示词
+            const char* eatText = "正在食用";
+            m_buttonText.setFontSize(18.0f);
+            int ew = m_buttonText.measureTextWidth(eatText) + 8;
+            int eh = (int)(18.0f * 1.1f) + 4;
+            GLuint etId = m_buttonText.update({eatText}, ew, eh, true);
+            float textY = center.y + r + 6.0f;
+            if (etId)
+                fg->AddImage((ImTextureID)(intptr_t)etId,
+                             ImVec2(center.x - ew * 0.5f, textY),
+                             ImVec2(center.x + ew * 0.5f, textY + eh));
         }
     }
 
@@ -1342,6 +1502,29 @@ int Player::getAttackPower() const
 {
     const auto& eqM = m_equipment[m_equipSlot].getMaterial();
     return m_baseAttack + eqM.attackBonus;
+}
+
+void Player::updateEating(float dt, bool rightHeld)
+{
+    const auto& heldMat = m_items[m_heldItem].getMaterial();
+    if (heldMat.id != Material::ID::WildFruit) {
+        m_eatProgress = 0.0f;
+        m_isEating = false;
+        return;
+    }
+    if (rightHeld) {
+        m_isEating = true;
+        m_eatProgress += dt;
+        if (m_eatProgress >= 1.0f) {
+            m_hp = std::min(m_hp + 1, m_maxHp);
+            m_items[m_heldItem].remove();
+            m_eatProgress = 0.0f;
+            m_isEating = false;
+        }
+    } else {
+        m_eatProgress = 0.0f;
+        m_isEating = false;
+    }
 }
 
 void Player::takeDamage(int amount, glm::vec3 knockbackDir)

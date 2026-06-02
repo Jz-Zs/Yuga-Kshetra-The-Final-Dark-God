@@ -12,11 +12,11 @@ void initCraftingRecipes()
         &Material::OAK_BARK_BLOCK, nullptr, nullptr,
     }, &Material::STICK, 1});
 
-    // 3 木棍(左列) → 1 木剑
+    // 橡木+橡木+木棍(中竖) → 1 木剑
     g_recipes.push_back({{
-        &Material::STICK, nullptr, nullptr,
-        &Material::STICK, nullptr, nullptr,
-        &Material::STICK, nullptr, nullptr,
+        nullptr, &Material::OAK_BARK_BLOCK, nullptr,
+        nullptr, &Material::OAK_BARK_BLOCK, nullptr,
+        nullptr, &Material::STICK,           nullptr,
     }, &Material::WOODEN_SWORD, 1});
 
     // === 入口7 新增配方 ===

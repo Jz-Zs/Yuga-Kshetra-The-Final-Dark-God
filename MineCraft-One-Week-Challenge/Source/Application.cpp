@@ -256,8 +256,11 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
             m_player.m_miningTarget = {0, -999, 0};
         }
 
-        // Right-click: place block
-        if (rightPressed && m_rightClickTimer.getElapsedTime().asSeconds() > 0.2f)
+        // Eating: update progress when holding right-click on food
+        m_player.updateEating(delta, rightPressed);
+
+        // Right-click: place block (skip if eating)
+        if (rightPressed && m_rightClickTimer.getElapsedTime().asSeconds() > 0.2f && !m_player.isEating())
         {
             for (Ray ray({m_player.position.x, m_player.position.y + 0.6f, m_player.position.z},
                          m_player.rotation);
