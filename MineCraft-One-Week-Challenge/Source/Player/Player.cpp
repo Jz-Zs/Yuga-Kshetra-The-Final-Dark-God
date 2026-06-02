@@ -1082,15 +1082,22 @@ void Player::draw(RenderMaster& master, const Camera* camera)
     // --- Extraction Countdown HUD ---
     if (m_isExtracting) {
         ImVec2 center(displaySize.x * 0.5f, displaySize.y * 0.5f);
-        auto* fg = ImGui::GetForegroundDrawList();
         int secLeft = 5 - (int)m_extractionProgress;
         if (secLeft < 0) secLeft = 0;
         char buf[32];
         snprintf(buf, sizeof(buf), "撤离中 %d 秒", secLeft + 1);
+
+        m_buttonText.setFontSize(24.0f);
+        int cw = m_buttonText.measureTextWidth(buf) + 12;
+        int ch = (int)(24.0f * 1.1f) + 4;
+        GLuint ctId = m_buttonText.update({buf}, cw, ch, true);
+
         float textY = center.y + 30.0f;
-        ImVec2 textSize = ImGui::CalcTextSize(buf);
-        fg->AddText(ImVec2(center.x - textSize.x * 0.5f, textY),
-                    IM_COL32(255, 255, 100, 255), buf);
+        if (ctId)
+            ImGui::GetForegroundDrawList()->AddImage(
+                (ImTextureID)(intptr_t)ctId,
+                ImVec2(center.x - cw * 0.5f, textY),
+                ImVec2(center.x + cw * 0.5f, textY + ch));
     }
 
     // --- Drop item icon rendering via ImGui overlay ---

@@ -288,14 +288,10 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
             m_player.m_settlementOutcome = Player::SettlementOutcome::TimeUp;
             m_player.clearInventory();
         }
-        // Spawn extraction point at 300s remaining (5 minutes elapsed)
-        static bool extractionSpawned = false;
-        if (m_player.m_roundTimeLeft <= 600.0f && !extractionSpawned && !m_world.isExtractionActive()) {
+        // Spawn extraction point at round start (was 300s for 5-min delay)
+        if (m_player.m_roundTimeLeft <= 600.0f && !m_extractionSpawned && !m_world.isExtractionActive()) {
             m_world.placeExtractionPoint();
-            extractionSpawned = true;
-        }
-        if (m_player.m_roundTimeLeft > 600.0f) {
-            extractionSpawned = false;
+            m_extractionSpawned = true;
         }
     }
 
@@ -316,8 +312,9 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
         m_player.m_isExtracting = false;
         m_player.m_pigmanKills = 0;
         m_player.m_roundCollection.clear();
-        m_player.m_roundTimeLeft = 600.01f; // >600 to reset extractionSpawned flag
+        m_player.m_roundTimeLeft = 600.0f;
         m_player.m_roundActive = true;
+        m_extractionSpawned = false;
         m_world.resetWorld(m_camera, m_player);
     }
 
