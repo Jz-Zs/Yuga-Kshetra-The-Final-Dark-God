@@ -452,7 +452,19 @@ void Player::drawSettlement(const Camera* camera)
             case Material::ID::Stick:      return "木棍";
             case Material::ID::WoodenSword:return "木剑";
             case Material::ID::RawMeat:    return "生肉";
-            case Material::ID::GoldBlock:  return "金块";
+            case Material::ID::GoldBlock:    return "金块";
+            case Material::ID::Cobblestone:   return "圆石";
+            case Material::ID::IronOre:       return "铁矿";
+            case Material::ID::IronIngot:     return "铁锭";
+            case Material::ID::WildFruit:     return "野果";
+            case Material::ID::StoneArrow:    return "石箭矢";
+            case Material::ID::WoodenPickaxe: return "木镐";
+            case Material::ID::StonePickaxe:  return "石镐";
+            case Material::ID::IronPickaxe:   return "铁镐";
+            case Material::ID::WoodenAxe:     return "木斧";
+            case Material::ID::StoneAxe:      return "石斧";
+            case Material::ID::IronAxe:       return "铁斧";
+            case Material::ID::IronSword:     return "铁剑";
             default: return "未知";
         }
     };
@@ -614,6 +626,22 @@ void Player::draw(RenderMaster& master, const Camera* camera)
             case Material::ID::Rose:       return "玫瑰";
             case Material::ID::TallGrass:  return "草";
             case Material::ID::DeadShrub:  return "枯木";
+            case Material::ID::Stick:      return "木棍";
+            case Material::ID::WoodenSword:return "木剑";
+            case Material::ID::RawMeat:    return "生肉";
+            case Material::ID::GoldBlock:  return "金块";
+            case Material::ID::Cobblestone:   return "圆石";
+            case Material::ID::IronOre:       return "铁矿";
+            case Material::ID::IronIngot:     return "铁锭";
+            case Material::ID::WildFruit:     return "野果";
+            case Material::ID::StoneArrow:    return "石箭矢";
+            case Material::ID::WoodenPickaxe: return "木镐";
+            case Material::ID::StonePickaxe:  return "石镐";
+            case Material::ID::IronPickaxe:   return "铁镐";
+            case Material::ID::WoodenAxe:     return "木斧";
+            case Material::ID::StoneAxe:      return "石斧";
+            case Material::ID::IronAxe:       return "铁斧";
+            case Material::ID::IronSword:     return "铁剑";
             default: return "未知";
         }
     };

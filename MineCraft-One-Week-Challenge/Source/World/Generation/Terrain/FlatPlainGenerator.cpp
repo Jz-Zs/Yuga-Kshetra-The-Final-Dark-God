@@ -72,6 +72,39 @@ void FlatPlainGenerator::generateTerrainFor(Chunk &chunk)
         }
     }
 
+    // 入口7: 铁矿脉生成 — Z ∈ [5, 20), 每区块 2~4 个矿脉
+    int veinCount = m_random.intInRange(2, 5); // [2, 4]
+    for (int v = 0; v < veinCount; v++) {
+        int cx = m_random.intInRange(0, CHUNK_SIZE - 1);
+        int cy = m_random.intInRange(5, 20);
+        int cz = m_random.intInRange(0, CHUNK_SIZE - 1);
+        int veinSize = m_random.intInRange(3, 7); // [3, 6]
+        int axis = m_random.intInRange(0, 3); // 0=X, 1=Y, 2=Z
+        int worldX = chunkX * CHUNK_SIZE + cx;
+        int worldZ = chunkZ * CHUNK_SIZE + cz;
+        if (worldX >= MVP_WORLD_SIZE_X || worldZ >= MVP_WORLD_SIZE_Z) continue;
+
+        for (int step = 0; step < veinSize; step++) {
+            for (int dx = 0; dx < 2; dx++)
+                for (int dy = 0; dy < 2; dy++)
+                    for (int dz = 0; dz < 2; dz++) {
+                        int px = cx + dx, py = cy + dy, pz = cz + dz;
+                        if (px >= 0 && px < CHUNK_SIZE &&
+                            py >= 0 && py < 64 &&
+                            pz >= 0 && pz < CHUNK_SIZE) {
+                            if (chunk.getBlock(px, py, pz).id == (int)BlockId::Stone) {
+                                chunk.setBlock(px, py, pz, BlockId::IronOre);
+                            }
+                        }
+                    }
+            int dir = (m_random.intInRange(0, 5) < 3) ? 1 : -1;
+            switch (axis) { case 0: cx += dir; break; case 1: cy += dir; break; case 2: cz += dir; break; }
+            cx = std::clamp(cx, 0, CHUNK_SIZE - 1);
+            cy = std::clamp(cy, 5, 19);
+            cz = std::clamp(cz, 0, CHUNK_SIZE - 1);
+        }
+    }
+
     if (!treeCandidates.empty()) {
         int treeCount = m_random.intInRange(5, 8);
         for (int i = 0; i < treeCount; i++) {

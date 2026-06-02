@@ -151,8 +151,12 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
                     auto id = (BlockId)block.id;
                     auto& data = block.getData();
 
-                    if (id != BlockId::Air && id != BlockId::Water
-                        && data.requiredToolLevel != 255)
+                    // Unbreakable blocks stop the ray (barrier)
+                    if (data.requiredToolLevel == 255) {
+                        break;
+                    }
+
+                    if (id != BlockId::Air && id != BlockId::Water)
                     {
                         // Check tool tier requirement
                         const auto& eqM = m_player.m_equipment[m_player.m_equipSlot].getMaterial();
@@ -189,7 +193,7 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
             // Calculate mining speed based on tool match
             const auto& eqM = m_player.m_equipment[m_player.m_equipSlot].getMaterial();
             float multiplier = 1.0f;
-            // If block requires a tool class and equipped tool matches, apply multiplier
+            // Tool bonus only applies when block requires a specific tool class AND equipped tool matches
             if (targetData.requiredToolClass != 0
                 && eqM.toolClass == targetData.requiredToolClass)
             {
@@ -197,6 +201,7 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
             }
             float digTime = targetData.hardness * 0.3f / multiplier;
             m_player.m_miningProgress += delta / digTime;
+
 
             if (m_player.m_miningProgress >= 1.0f)
             {
@@ -221,8 +226,13 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
                     auto block = m_world.getBlock(x, y, z);
                     auto id = (BlockId)block.id;
                     auto& data = block.getData();
-                    if (id != BlockId::Air && id != BlockId::Water
-                        && data.requiredToolLevel != 255)
+
+                    // Unbreakable blocks stop the ray (barrier)
+                    if (data.requiredToolLevel == 255) {
+                        break;
+                    }
+
+                    if (id != BlockId::Air && id != BlockId::Water)
                     {
                         // Check tool tier requirement
                         const auto& eqM = m_player.m_equipment[m_player.m_equipSlot].getMaterial();
@@ -257,6 +267,11 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
                 int y = static_cast<int>(ray.getEnd().y);
                 int z = static_cast<int>(ray.getEnd().z);
                 auto block = m_world.getBlock(x, y, z);
+                auto& data = block.getData();
+                // Unbreakable blocks stop placement ray
+                if (data.requiredToolLevel == 255) {
+                    break;
+                }
                 if (block.id != 0 && block.id != (int)BlockId::Water)
                 {
                     m_rightClickTimer.restart();
