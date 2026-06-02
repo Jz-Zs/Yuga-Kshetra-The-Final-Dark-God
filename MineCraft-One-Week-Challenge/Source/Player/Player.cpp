@@ -1082,10 +1082,10 @@ void Player::draw(RenderMaster& master, const Camera* camera)
     // --- Extraction Countdown HUD ---
     if (m_isExtracting) {
         ImVec2 center(displaySize.x * 0.5f, displaySize.y * 0.5f);
-        int secLeft = 5 - (int)m_extractionProgress;
-        if (secLeft < 0) secLeft = 0;
+        int secLeft = 5 - (int)std::floor(m_extractionProgress * 5.0f);
+        if (secLeft < 1) secLeft = 1;
         char buf[32];
-        snprintf(buf, sizeof(buf), "撤离中 %d 秒", secLeft + 1);
+        snprintf(buf, sizeof(buf), "撤离中 %d 秒", secLeft);
 
         m_buttonText.setFontSize(24.0f);
         int cw = m_buttonText.measureTextWidth(buf) + 12;
