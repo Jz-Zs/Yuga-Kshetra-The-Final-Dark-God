@@ -45,9 +45,6 @@ bool EntityRenderer::loadGltf(const char* path)
     if (!err.empty()) std::cerr << "glTF err: " << err << "\n";
     if (!ok) return false;
 
-    std::cout << "Zoglin loaded: " << m_gltfModel.meshes.size() << " meshes, "
-              << m_gltfModel.nodes.size() << " nodes\n";
-
     buildParentMap(m_gltfModel);
     buildMeshParts(m_gltfModel);
     return !m_meshParts.empty();

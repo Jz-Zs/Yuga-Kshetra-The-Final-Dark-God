@@ -28,10 +28,8 @@ ClassicOverWorldGenerator::ClassicOverWorldGenerator()
 
 void ClassicOverWorldGenerator::setUpNoise()
 {
-    std::cout << "Seed: " << seed << '\n';
     static bool noiseGen = false;
     if (!noiseGen) {
-        std::cout << "making noise\n";
         noiseGen = true;
 
         NoiseParameters biomeParmams;

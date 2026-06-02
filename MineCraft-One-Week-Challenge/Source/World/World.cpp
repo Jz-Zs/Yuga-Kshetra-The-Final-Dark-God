@@ -309,28 +309,34 @@ void World::placeExtractionPoint()
 
     m_extractionCenter = center;
     m_extractionActive = true;
-    std::cout << "Extraction point placed at (" << center.x << ", "
-              << center.y << ", " << center.z << ")\n";
 }
 
 void World::setSpawnPoint()
 {
-    // Fixed spawn at world center for MVP 128x128 world
-    constexpr int spawnChunkX = 4; // 64 / CHUNK_SIZE
-    constexpr int spawnChunkZ = 4;
-    constexpr int spawnBlockX = 0; // 64 % CHUNK_SIZE, local coords
-    constexpr int spawnBlockZ = 0;
+    // Random spawn within 128x128 world, 8-block margin from edges
+    constexpr int margin = 8;
+    constexpr int maxRetries = 20;
+    int worldX = 64, worldZ = 64; // fallback: center
 
-    m_chunkManager.loadChunk(spawnChunkX, spawnChunkZ);
-    int surfaceY =
-        m_chunkManager.getChunk(spawnChunkX, spawnChunkZ)
-            .getHeightAt(spawnBlockX, spawnBlockZ);
+    for (int retry = 0; retry < maxRetries; retry++) {
+        int rx = (int)RandomSingleton::get().intInRange(margin, MVP_WORLD_SIZE_X - 1 - margin);
+        int rz = (int)RandomSingleton::get().intInRange(margin, MVP_WORLD_SIZE_Z - 1 - margin);
+        int cx = rx / CHUNK_SIZE, cz = rz / CHUNK_SIZE;
+        int lx = rx % CHUNK_SIZE, lz = rz % CHUNK_SIZE;
 
-    m_playerSpawnPoint = {64.0f, static_cast<float>(surfaceY + 1), 64.0f};
-
-    std::cout << "Spawn set at (" << m_playerSpawnPoint.x << ", "
-              << m_playerSpawnPoint.y << ", " << m_playerSpawnPoint.z
-              << ")\n";
+        m_chunkManager.loadChunk(cx, cz);
+        int sy = m_chunkManager.getChunk(cx, cz).getHeightAt(lx, lz);
+        if (sy >= MVP_WATER_LEVEL) {
+            worldX = rx; worldZ = rz;
+            m_playerSpawnPoint = {(float)worldX + 0.5f, (float)(sy + 1), (float)worldZ + 0.5f};
+            return;
+        }
+    }
+    // Fallback: center of world
+    int cx = 64 / CHUNK_SIZE, cz = 64 / CHUNK_SIZE;
+    m_chunkManager.loadChunk(cx, cz);
+    int sy = m_chunkManager.getChunk(cx, cz).getHeightAt(0, 0);
+    m_playerSpawnPoint = {64.5f, (float)(sy + 1), 64.5f};
 }
 
 void World::spawnDrop(const glm::ivec3& blockPos, BlockId blockId)

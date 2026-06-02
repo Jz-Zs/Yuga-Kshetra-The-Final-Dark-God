@@ -45,8 +45,6 @@ BitmapText::BitmapText()
             m_fontInfo = malloc(sizeof(stbtt_fontinfo));
             int off = stbtt_GetFontOffsetForIndex(m_ttfData.data(), 0);
             if (stbtt_InitFont((stbtt_fontinfo*)m_fontInfo, m_ttfData.data(), off)) {
-                std::cout << "[BitmapText] stb_truetype loaded: "
-                          << fontPaths[i] << std::endl;
                 return;
             }
             free(m_fontInfo);
