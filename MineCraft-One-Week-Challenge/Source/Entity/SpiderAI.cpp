@@ -22,7 +22,10 @@ void update(SpiderEntity& e, float dt, Player& player, World& world) {
     e.rangedCooldown -= dt;
     e.freezeTimer -= dt;
     e.hurtTimer -= dt;
+    e.aggroTimer -= dt;
+    e.m_slowTimer -= dt;
     e.stateTimer += dt;
+    float slowMul = (e.m_slowTimer > 0.0f) ? e.m_slowFactor : 1.0f;
 
     switch (e.state) {
 
@@ -39,8 +42,8 @@ void update(SpiderEntity& e, float dt, Player& player, World& world) {
             float dx =  std::sin(glm::radians(angle));
             float dz = -std::cos(glm::radians(angle));
             e.rotation.y = glm::degrees(std::atan2(dx, dz));
-            e.velocity.x = dx * 2.0f * 0.4f;  // patrol speed 2.0
-            e.velocity.z = dz * 2.0f * 0.4f;
+            e.velocity.x = dx * 2.0f * 0.4f * slowMul;  // patrol speed 2.0
+            e.velocity.z = dz * 2.0f * 0.4f * slowMul;
         }
 
         if (distToPlayer < 10.0f && PigmanAI::findPath(world, e.position, player.position).size() > 0) {
@@ -66,7 +69,7 @@ void update(SpiderEntity& e, float dt, Player& player, World& world) {
 
     case SpiderEntity::Chase: {
         // RANGED MODE: kite at 5-8 blocks
-        if (distToPlayer > 10.0f) {
+        if (distToPlayer > 10.0f && e.aggroTimer <= 0.0f) {
             e.state = SpiderEntity::Patrol;
             e.stateTimer = 0.0f;
             e.path.clear();
@@ -114,8 +117,8 @@ void update(SpiderEntity& e, float dt, Player& player, World& world) {
             // else 6.5-7.5: hold position (side-strafe occasionally)
         }
 
-        e.velocity.x = awayDir.x * e.moveSpeed * 0.625f * speedMul;
-        e.velocity.z = awayDir.z * e.moveSpeed * speedMul;
+        e.velocity.x = awayDir.x * e.moveSpeed * 0.625f * speedMul * slowMul;
+        e.velocity.z = awayDir.z * e.moveSpeed * speedMul * slowMul;
 
         // Always face player
         {
@@ -139,8 +142,8 @@ void update(SpiderEntity& e, float dt, Player& player, World& world) {
             toPlayer.y = 0;
             if (glm::length(toPlayer) > 0.1f) {
                 glm::vec3 d = glm::normalize(toPlayer);
-                e.velocity.x = d.x * e.moveSpeed * 0.625f;
-                e.velocity.z = d.z * e.moveSpeed;
+                e.velocity.x = d.x * e.moveSpeed * 0.625f * slowMul;
+                e.velocity.z = d.z * e.moveSpeed * slowMul;
             }
             // Smooth rotation
             float targetYaw = glm::degrees(std::atan2(toPlayer.x, toPlayer.z));

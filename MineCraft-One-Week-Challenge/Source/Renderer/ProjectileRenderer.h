@@ -12,21 +12,23 @@ struct SpiderProjectile;
 
 class ProjectileRenderer {
 public:
-    ProjectileRenderer();
+    ProjectileRenderer(int cellX = 13, int cellY = 2, bool rotate90 = false);
     ~ProjectileRenderer();
 
     void addProjectile(const SpiderProjectile& p);
+    void addPosition(const glm::vec3& pos, float scale = 1.0f);
     void render(const Camera& camera);
 
 private:
-    void buildQuad();
+    void buildQuad(int cellX, int cellY, bool rotate90);
 
+    struct BatchEntry { glm::vec3 pos; float scale = 1.0f; };
     BasicShader m_shader;
     TextureAtlas m_atlas;
     GLuint m_vao = 0;
     GLuint m_vbo = 0;
     GLuint m_ebo = 0;
-    std::vector<glm::vec3> m_positions;
+    std::vector<BatchEntry> m_entries;
 };
 
 #endif

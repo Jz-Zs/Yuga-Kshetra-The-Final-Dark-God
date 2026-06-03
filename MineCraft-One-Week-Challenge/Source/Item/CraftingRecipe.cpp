@@ -97,6 +97,27 @@ void initCraftingRecipes()
         &Material::SILK, nullptr, nullptr,
         &Material::SILK, nullptr, nullptr,
     }, &Material::SILK_THREAD, 1});
+
+    // Bow: 3 Stick ("<" left) + 3 SilkThread (right vertical) → 1 Bow
+    g_recipes.push_back({{
+        nullptr,                &Material::STICK, &Material::SILK_THREAD,
+        &Material::STICK,       nullptr,          &Material::SILK_THREAD,
+        nullptr,                &Material::STICK, &Material::SILK_THREAD,
+    }, &Material::BOW, 1});
+
+    // IronArrow: 1 IronIngot + 2 Stick (diagonal) → 4 IronArrow
+    g_recipes.push_back({{
+        &Material::IRON_INGOT, nullptr,          nullptr,
+        nullptr,               &Material::STICK, nullptr,
+        nullptr,               nullptr,          &Material::STICK,
+    }, &Material::IRON_ARROW, 4});
+
+    // SpiderSilkArrow: 1 Silk + 2 Stick (diagonal) → 4 SpiderSilkArrow
+    g_recipes.push_back({{
+        &Material::SILK,  nullptr,          nullptr,
+        nullptr,          &Material::STICK, nullptr,
+        nullptr,          nullptr,          &Material::STICK,
+    }, &Material::SPIDER_SILK_ARROW, 4});
 }
 
 const CraftingRecipe* findMatchingRecipe(const ItemStack grid[9])

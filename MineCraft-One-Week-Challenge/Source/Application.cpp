@@ -7,6 +7,7 @@
 
 #include "Entity/PigmanEntity.h"
 #include "Entity/SpiderEntity.h"
+#include "Entity/ArrowEntity.h"
 #include "Maths/Ray.h"
 #include "Renderer/RenderMaster.h"
 #include "World/Block/BlockDatabase.h"
@@ -71,8 +72,59 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
         if (leftClicked && !m_player.isUIOpen())
             m_player.triggerSwing();
 
+        // --- Bow input (LeftClick hold to charge, release to fire) ---
+        const auto& bowEq = m_player.m_equipment[m_player.m_equipSlot].getMaterial();
+        bool bowEquipped = (bowEq.id == Material::ID::Bow);
+
+        if (bowEquipped) {
+            if (leftPressed && !m_player.m_bowCharging) {
+                m_player.m_bowCharging = true;
+                m_player.m_bowCharge = 0.0f;
+            }
+            if (m_player.m_bowCharging && leftPressed) {
+                m_player.m_bowCharge += delta;
+                if (m_player.m_bowCharge >= 1.0f)
+                    m_player.m_bowCharge = 1.0f;
+            }
+            if (m_player.m_bowCharging && !leftPressed) {
+                if (m_player.m_bowCharge >= 1.0f) {
+                    // Find arrow: hotbar 0→4, then backpack 0→19
+                    int arrowSlot = -1;
+                    const Material* arrowMat = nullptr;
+                    for (int i = 0; i < 20; i++) {
+                        auto id = m_player.m_items[i].getMaterial().id;
+                        if (id == Material::ID::IronArrow || id == Material::ID::StoneArrow || id == Material::ID::SpiderSilkArrow) {
+                            arrowSlot = i;
+                            arrowMat = &m_player.m_items[i].getMaterial();
+                            break;
+                        }
+                    }
+                    if (arrowSlot >= 0 && arrowMat) {
+                        ArrowEntity arrow;
+                        arrow.position = glm::vec3(m_player.position.x, m_player.position.y + 0.6f, m_player.position.z);
+                        float yaw = glm::radians(m_player.rotation.y + 90);
+                        float pitch = glm::radians(m_player.rotation.x);
+                        float dx = -glm::cos(yaw);
+                        float dy = -glm::tan(pitch);
+                        float dz = -glm::sin(yaw);
+                        float len = std::sqrt(dx*dx + dy*dy + dz*dz);
+                        arrow.velocity.x = dx / len * 10.0f;
+                        arrow.velocity.y = dy / len * 10.0f;
+                        arrow.velocity.z = dz / len * 10.0f;
+                        arrow.damage = arrowMat->attackBonus;
+                        arrow.isSilkArrow = (arrowMat->id == Material::ID::SpiderSilkArrow);
+                        m_world.getArrows().push_back(arrow);
+                        m_player.m_items[arrowSlot].remove();
+                    }
+                }
+                m_player.m_bowCharge = 0.0f;
+                m_player.m_bowCharging = false;
+            }
+        }
+
         // --- Left-click: pigman attack first, then mining ---
-        if (leftClicked && !m_player.m_isDead)
+        bool bowBlocksCombat = (bowEquipped && m_player.m_bowCharging);
+        if (!bowBlocksCombat && leftClicked && !m_player.m_isDead)
         {
             bool hitPigman = false;
             bool hitSpider = false;
@@ -505,6 +557,15 @@ void Application::on_render(bool show_debug_info)
     // Add projectiles to renderer
     for (auto& p : m_world.getProjectiles()) {
         m_masterRenderer.m_projectileRenderer.addProjectile(p);
+    }
+
+    // Add arrows to renderer (shrink as they fly)
+    for (auto& a : m_world.getArrows()) {
+        if (a.alive) {
+            float shrink = 1.0f - a.lifetime / a.maxLifetime;
+            if (shrink < 0.0f) shrink = 0.0f;
+            m_masterRenderer.m_arrowRenderer.addPosition(a.position, 1.0f - shrink * 0.7f);
+        }
     }
 
     m_masterRenderer.finishRender(m_window, m_camera);

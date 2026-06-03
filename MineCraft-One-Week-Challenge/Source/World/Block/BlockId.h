@@ -39,6 +39,9 @@ enum class BlockId : Block_t {
     CookedMeat_Item = 29,
     Silk = 30,
     SilkThread = 31,
+    Bow = 32,
+    IronArrow = 33,
+    SpiderSilkArrow = 34,
 
     NUM_TYPES
 };

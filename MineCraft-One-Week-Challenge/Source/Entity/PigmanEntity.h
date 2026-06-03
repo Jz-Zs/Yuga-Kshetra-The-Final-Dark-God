@@ -28,8 +28,11 @@ struct PigmanEntity {
     float attackCooldown = 1.0f;
     float hurtTimer = 0.0f;
     float stuckTimer = 0.0f;
+    float aggroTimer = 0.0f;  // forced chase on arrow hit
     glm::vec3 stuckPosition{0, 0, 0};
     float respawnTimer = -1.0f;
+    float m_slowTimer = 0.0f;     // slow debuff from silk arrow
+    float m_slowFactor = 1.0f;    // 1.0=normal, 0.8=slowed
 
     glm::vec3 patrolOrigin{0, 0, 0};
     glm::vec3 patrolTarget{0, 0, 0};

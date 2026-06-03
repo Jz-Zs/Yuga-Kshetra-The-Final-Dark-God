@@ -23,6 +23,7 @@ class RenderMaster {
     EntityRenderer m_pigmanRenderer;
     EntityRenderer m_spiderRenderer;
     ProjectileRenderer m_projectileRenderer;
+    ProjectileRenderer m_arrowRenderer;
 
     RenderMaster();
 

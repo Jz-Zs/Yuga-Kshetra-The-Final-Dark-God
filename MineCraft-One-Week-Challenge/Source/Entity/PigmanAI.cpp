@@ -162,7 +162,10 @@ void update(PigmanEntity& e, float dt, Player& player, World& world) {
 
     e.attackCooldown -= dt;
     e.hurtTimer -= dt;
+    e.aggroTimer -= dt;
+    e.m_slowTimer -= dt;
     e.stateTimer += dt;
+    float slowMul = (e.m_slowTimer > 0.0f) ? e.m_slowFactor : 1.0f;
 
     switch (e.state) {
 
@@ -181,8 +184,8 @@ void update(PigmanEntity& e, float dt, Player& player, World& world) {
             float dx =  std::sin(glm::radians(angle));
             float dz = -std::cos(glm::radians(angle));
             e.rotation.y = glm::degrees(std::atan2(dx, dz)); // match chase convention
-            e.velocity.x = dx * e.moveSpeed * 0.4f;
-            e.velocity.z = dz * e.moveSpeed * 0.4f;
+            e.velocity.x = dx * e.moveSpeed * 0.4f * slowMul;
+            e.velocity.z = dz * e.moveSpeed * 0.4f * slowMul;
         }
 
         if (distToPlayer < 8.0f && hasLineOfSight(world, e.position, player.position)) {
@@ -210,7 +213,7 @@ void update(PigmanEntity& e, float dt, Player& player, World& world) {
         if (moved < 0.1f) { e.stuckTimer += dt; }
         else { e.stuckTimer = 0.0f; e.stuckPosition = e.position; }
 
-        bool lostTarget = (distToPlayer > 8.0f);
+        bool lostTarget = (distToPlayer > 8.0f && e.aggroTimer <= 0.0f);
         bool stuck = (e.stuckTimer > 3.0f);
         if (lostTarget || stuck) {
             e.state = PigmanEntity::Patrol;
@@ -235,16 +238,16 @@ void update(PigmanEntity& e, float dt, Player& player, World& world) {
             if (hd < 0.3f) { e.pathIndex++; }
             else {
                 d = glm::normalize(d);
-                e.velocity.x = d.x * e.moveSpeed * 0.625f;
-                e.velocity.z = d.z * e.moveSpeed;
+                e.velocity.x = d.x * e.moveSpeed * 0.625f * slowMul;
+                e.velocity.z = d.z * e.moveSpeed * slowMul;
             }
         } else {
             // No path — move directly toward player
             toPlayer.y = 0;
             if (glm::length(toPlayer) > 0.1f) {
                 glm::vec3 d = glm::normalize(toPlayer);
-                e.velocity.x = d.x * e.moveSpeed * 0.625f;
-                e.velocity.z = d.z * e.moveSpeed;
+                e.velocity.x = d.x * e.moveSpeed * 0.625f * slowMul;
+                e.velocity.z = d.z * e.moveSpeed * slowMul;
             }
         }
         // Smooth rotation toward player

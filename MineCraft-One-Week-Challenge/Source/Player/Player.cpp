@@ -41,6 +41,13 @@ Player::Player()
     m_items[2] = ItemStack(Material::WOODEN_AXE, 1);
     m_items[3] = ItemStack(Material::FURNACE, 1);
     m_items[4] = ItemStack(Material::IRON_ORE_ITEM, 64);
+    // Test items — bow/arrow testing
+    m_items[5] = ItemStack(Material::STONE_BLOCK, 64);
+    m_items[6] = ItemStack(Material::COBBLESTONE, 64);
+    m_items[7] = ItemStack(Material::STICK, 99);
+    m_items[8] = ItemStack(Material::IRON_INGOT, 64);
+    m_items[9] = ItemStack(Material::SILK, 64);
+    m_items[10] = ItemStack(Material::SILK_THREAD, 64);
     m_equipment[0] = ItemStack(Material::WOODEN_SWORD, 1);  // 主手装备木剑
     for (int i = 0; i < 9; i++)
     {
@@ -1410,10 +1417,17 @@ void Player::draw(RenderMaster& master, const Camera* camera)
                     // 熔炉唯一性检查：已有熔炉则静默拒绝合成
                     if (outMat.id == Material::ID::Furnace && hasFurnace()) {
                         // 已有熔炉，不消耗材料，不做任何事
-                    } else if (addItem(outMat)) {
-                        for (int i = 0; i < 9; i++)
-                            if (m_currentRecipe->pattern[i] != nullptr) m_craftGrid[i].remove();
+                    } else {
+                        // Add outputCount items, one at a time
+                        bool allAdded = true;
+                        for (int oc = 0; oc < m_currentRecipe->outputCount; oc++) {
+                            if (!addItem(outMat)) { allAdded = false; break; }
+                        }
+                        if (allAdded) {
+                            for (int i = 0; i < 9; i++)
+                                if (m_currentRecipe->pattern[i] != nullptr) m_craftGrid[i].remove();
                         m_currentRecipe = findMatchingRecipe(m_craftGrid);
+                    }
                     }
                 }
                 ImGui::PopID();
@@ -1816,6 +1830,27 @@ void Player::draw(RenderMaster& master, const Camera* camera)
                              ImVec2(center.x - ew * 0.5f, textY),
                              ImVec2(center.x + ew * 0.5f, textY + eh));
         }
+
+        // Bow charge progress ring
+        if (m_bowCharging && m_bowCharge > 0.0f) {
+            float pi = 3.14159265f;
+            int segs = 36;
+            float full = m_bowCharge * 2.0f * pi;
+            if (full > 2.0f * pi) full = 2.0f * pi;
+            float startAngle = -pi / 2.0f;
+            // Green when fully charged, yellow while charging
+            ImU32 ringColor = (m_bowCharge >= 1.0f)
+                ? IM_COL32(100, 255, 100, 240)
+                : IM_COL32(255, 220, 100, 240);
+            float r = 22.0f;
+            ImVec2 prev(center.x + r * cosf(startAngle), center.y + r * sinf(startAngle));
+            for (int i = 1; i <= segs; i++) {
+                float a = (float)i / (float)segs * full;
+                ImVec2 pt(center.x + r * cosf(startAngle + a), center.y + r * sinf(startAngle + a));
+                fg->AddLine(prev, pt, ringColor, 3.0f);
+                prev = pt;
+            }
+        }
     }
 
     // --- Extraction Countdown HUD ---
@@ -1992,10 +2027,17 @@ void Player::renderWeapon()
     }
 
     float angle = 0.0f, ox = 0.0f, oy = 0.0f;
-    if (m_isSwinging) {
+    bool isBow = (eqM.id == Material::ID::Bow);
+    if (m_isSwinging && !isBow) {
         float t = m_swingTimer / 0.3f; if (t > 1.0f) t = 1.0f;
         float s = sinf(t * 3.14159265f);
         angle = s * 25.0f; ox = -s * 90.0f; oy = s * 50.0f;
+    }
+    // Bow charge animation: pull toward bottom-right
+    if (isBow && m_bowCharging) {
+        float pull = m_bowCharge; if (pull > 1.0f) pull = 1.0f;
+        ox =  pull * 40.0f;  // right
+        oy =  pull * 30.0f;  // down
     }
     float ws = 600.0f;
     float wx = displaySize.x - ws + 90.0f + ox;
@@ -2006,6 +2048,12 @@ void Player::renderWeapon()
     float cx = (wx + ws) / hsw - 1.0f;
     float cy = 1.0f - (wy + ws) / hsh;
     float sx = ws * 0.5f / hsw, sy = ws * 0.5f / hsh;
+    // Bow charge shrink
+    if (isBow && m_bowCharging) {
+        float pull = m_bowCharge; if (pull > 1.0f) pull = 1.0f;
+        sx *= (1.0f - pull * 0.15f);
+        sy *= (1.0f - pull * 0.15f);
+    }
     float rad = angle * 3.14159265f / 180.0f;
 
     GLint pp = 0, va = 0, tx = 0;
@@ -2025,8 +2073,8 @@ void Player::renderWeapon()
     // X-flipped: bottom-right=(xMin,yMax), top-right=(xMin,yMin), bottom-left=(xMax,yMax), top-left=(xMax,yMin)
     // Vertices: pos(x,y) + uv(x,y) interleaved, 6 verts (24 floats)
     float vd[24];
-    if (eqM.toolClass == 2) {
-        // 斧头顺时针90°：BR←TR, TR←TL, BL←BR, TL←BL
+    if (eqM.toolClass == 2 || isBow) {
+        // 斧头/弓顺时针90°
         float a[] = {0,0, uv[0],uv[1], 0,2, uv[2],uv[3], -2,0, uv[6],uv[7],
                      0,2, uv[2],uv[3], -2,2, uv[4],uv[5], -2,0, uv[6],uv[7]};
         for (int i = 0; i < 24; ++i) vd[i] = a[i];

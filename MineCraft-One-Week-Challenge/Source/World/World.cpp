@@ -43,6 +43,7 @@ void World::resetWorld(const Camera &camera, Player &player)
     m_pigmen.clear();
     m_spiders.clear();
     m_projectiles.clear();
+    m_arrows.clear();
     m_difficultyTriggered = false;
     m_difficultyMultiplier = 1.0f;
     m_events.clear();
@@ -874,4 +875,126 @@ void World::updateEntities(float dt, Player& player)
         std::remove_if(m_projectiles.begin(), m_projectiles.end(),
             [](const SpiderProjectile& p) { return !p.alive; }),
         m_projectiles.end());
+
+    // --- Arrow updates ---
+    for (auto& a : m_arrows) {
+        if (!a.alive) continue;
+        a.lifetime += dt;
+        if (a.lifetime > a.maxLifetime) {
+            a.alive = false;
+            continue;
+        }
+        a.position.x += a.velocity.x * dt;
+        a.position.y += a.velocity.y * dt;
+        a.position.z += a.velocity.z * dt;
+
+        // Block collision
+        int ax = (int)a.position.x, ay = (int)a.position.y, az = (int)a.position.z;
+        auto block = getBlock(ax, ay, az);
+        if (block.id != 0 && block.getData().isCollidable) {
+            a.alive = false;
+            continue;
+        }
+
+        // Drop helper for arrow kills
+        auto arrowDrop = [&](const Material& mat) {
+            ItemDropEntity d;
+            d.position = glm::vec3(a.position.x, a.position.y - 0.3f, a.position.z);
+            d.velocity = glm::vec3(0, 0, 0);
+            d.material = &mat;
+            d.alive = true;
+            m_dropItems.push_back(d);
+        };
+
+        // Sphere-vs-AABB helper: arrow hit radius 0.4 blocks
+        auto arrowHitsAABB = [&](const glm::vec3& eMin, const glm::vec3& eMax) -> bool {
+            float r = 0.4f;
+            float cx = glm::clamp(a.position.x, eMin.x, eMax.x);
+            float cy = glm::clamp(a.position.y, eMin.y, eMax.y);
+            float cz = glm::clamp(a.position.z, eMin.z, eMax.z);
+            float dx = a.position.x - cx, dy = a.position.y - cy, dz = a.position.z - cz;
+            return (dx*dx + dy*dy + dz*dz) < (r * r);
+        };
+
+        // Pigman hit
+        for (auto& e : m_pigmen) {
+            if (e.state == PigmanEntity::Dead) continue;
+            glm::vec3 eMin = e.box.position - e.box.dimensions;
+            glm::vec3 eMax = e.box.position + e.box.dimensions;
+            if (arrowHitsAABB(eMin, eMax))
+            {
+                e.hp -= a.damage;
+                e.aggroTimer = 3.0f;
+                e.state = PigmanEntity::Chase;
+                e.stateTimer = 0.0f;
+                e.stuckPosition = e.position;
+                e.stuckTimer = 0.0f;
+                e.path.clear();
+                if (a.isSilkArrow) {
+                    e.m_slowTimer = 1.0f;
+                    e.m_slowFactor = 0.8f;
+                }
+                if (e.hp <= 0) {
+                    e.hp = 0;
+                    for (int r = 0; r < 5; r++) {
+                        if (std::rand() % 100 < 40) arrowDrop(Material::RAW_MEAT);
+                        if (std::rand() % 100 < 30) arrowDrop(Material::STICK);
+                    }
+                    e.state = PigmanEntity::Dead;
+                    e.deathAnimTimer = 0.0f;
+                    e.respawnTimer = 10.0f + (float)(std::rand() % 11);
+                } else {
+                    e.state = PigmanEntity::Hurt;
+                    e.hurtTimer = 0.3f;
+                }
+                a.alive = false;
+                break;
+            }
+        }
+        if (!a.alive) continue;
+
+        // Spider hit
+        for (auto& e : m_spiders) {
+            if (e.state == SpiderEntity::Dead) continue;
+            glm::vec3 eMin = e.box.position - e.box.dimensions;
+            glm::vec3 eMax = e.box.position + e.box.dimensions;
+            if (arrowHitsAABB(eMin, eMax))
+            {
+                e.hp -= a.damage;
+                e.aggroTimer = 3.0f;
+                e.state = SpiderEntity::Chase;
+                e.stateTimer = 0.0f;
+                e.stuckPosition = e.position;
+                e.stuckTimer = 0.0f;
+                e.path.clear();
+                if (a.isSilkArrow) {
+                    e.m_slowTimer = 1.0f;
+                    e.m_slowFactor = 0.8f;
+                }
+                if (e.hp <= 0) {
+                    e.hp = 0;
+                    for (int r = 0; r < 5; r++) {
+                        if (std::rand() % 100 < 35) arrowDrop(Material::RAW_MEAT);
+                        if (std::rand() % 100 < 50) arrowDrop(Material::SILK);
+                        if (std::rand() % 100 < 20) arrowDrop(Material::STICK);
+                        if (std::rand() % 100 < 15) arrowDrop(Material::SILK_THREAD);
+                    }
+                    e.state = SpiderEntity::Dead;
+                    e.deathAnimTimer = 0.0f;
+                    e.respawnTimer = 30.0f + (float)(std::rand() % 21);
+                } else {
+                    e.state = SpiderEntity::Hurt;
+                    e.hurtTimer = 0.3f;
+                }
+                a.alive = false;
+                break;
+            }
+        }
+    }
+
+    // Cleanup dead arrows
+    m_arrows.erase(
+        std::remove_if(m_arrows.begin(), m_arrows.end(),
+            [](const ArrowEntity& a) { return !a.alive; }),
+        m_arrows.end());
 }

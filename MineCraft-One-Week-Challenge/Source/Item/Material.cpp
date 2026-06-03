@@ -25,7 +25,15 @@ const Material Material::COBBLESTONE(ID::Cobblestone, 64, true, "Cobblestone");
 const Material Material::IRON_ORE_ITEM(ID::IronOre, 64, true, "Iron Ore");
 const Material Material::IRON_INGOT(ID::IronIngot, 64, false, "Iron Ingot");
 const Material Material::WILD_FRUIT(ID::WildFruit, 30, false, "Wild Fruit");
-const Material Material::STONE_ARROW(ID::StoneArrow, 99, false, "Stone Arrow");
+const Material Material::STONE_ARROW(ID::StoneArrow, 99, false, "Stone Arrow",
+    0, 0, 1.0f, 10);
+
+const Material Material::BOW(ID::Bow, 1, false, "Bow",
+    0, 0, 1.0f, 1);
+const Material Material::IRON_ARROW(ID::IronArrow, 99, false, "Iron Arrow",
+    0, 0, 1.0f, 15);
+const Material Material::SPIDER_SILK_ARROW(ID::SpiderSilkArrow, 99, false, "Spider Silk Arrow",
+    0, 0, 1.0f, 10);
 
 const Material Material::WOODEN_PICKAXE(ID::WoodenPickaxe, 1, false, "Wooden Pickaxe",
     1, 1, 2.0f, 1);   // Pickaxe, Wood, 2x, +1 atk
@@ -126,7 +134,10 @@ BlockId Material::toBlockID() const
         case CookedMeat:  return BlockId::CookedMeat_Item;
         case Furnace:     return BlockId::Furnace;
         case Silk:        return BlockId::Silk;
-        case SilkThread:  return BlockId::SilkThread;
+        case SilkThread:       return BlockId::SilkThread;
+        case Bow:              return BlockId::Bow;
+        case IronArrow:        return BlockId::IronArrow;
+        case SpiderSilkArrow:  return BlockId::SpiderSilkArrow;
 
         default:
             return BlockId::NUM_TYPES;
@@ -190,7 +201,10 @@ const Material &Material::toMaterial(BlockId id)
         case BlockId::IronSword:      return IRON_SWORD;
         case BlockId::Furnace: return FURNACE;
         case BlockId::Silk:       return SILK;
-        case BlockId::SilkThread: return SILK_THREAD;
+        case BlockId::SilkThread:      return SILK_THREAD;
+        case BlockId::Bow:              return BOW;
+        case BlockId::IronArrow:        return IRON_ARROW;
+        case BlockId::SpiderSilkArrow:  return SPIDER_SILK_ARROW;
 
         default:
             return NOTHING;

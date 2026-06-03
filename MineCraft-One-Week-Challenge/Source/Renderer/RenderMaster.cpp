@@ -8,6 +8,7 @@
 RenderMaster::RenderMaster()
     : m_pigmanRenderer("Res/Models/Zoglin/minecraft_-zoglin/scene.gltf", "zoglin")
     , m_spiderRenderer("Res/Models/Spider/minecraft-spider/source/model.gltf", "spider")
+    , m_arrowRenderer(14, 3, true)
 {
 }
 #include "../World/Chunk/ChunkMesh.h"
@@ -47,6 +48,7 @@ void RenderMaster::finishRender(sf::Window &window, const Camera &camera)
     m_pigmanRenderer.render(camera);
     m_spiderRenderer.render(camera);
     m_projectileRenderer.render(camera);
+    m_arrowRenderer.render(camera);
 
     if (m_drawBox) {
         glDisable(GL_CULL_FACE);

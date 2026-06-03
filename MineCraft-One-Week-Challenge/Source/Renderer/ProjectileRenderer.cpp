@@ -3,11 +3,11 @@
 #include "../Camera.h"
 #include <glm/gtc/matrix_transform.hpp>
 
-ProjectileRenderer::ProjectileRenderer()
+ProjectileRenderer::ProjectileRenderer(int cellX, int cellY, bool rotate90)
     : m_shader("Basic", "Basic")
     , m_atlas("DefaultPack")
 {
-    buildQuad();
+    buildQuad(cellX, cellY, rotate90);
 }
 
 ProjectileRenderer::~ProjectileRenderer()
@@ -17,21 +17,33 @@ ProjectileRenderer::~ProjectileRenderer()
     if (m_ebo) glDeleteBuffers(1, &m_ebo);
 }
 
-void ProjectileRenderer::buildQuad()
+void ProjectileRenderer::buildQuad(int cellX, int cellY, bool rotate90)
 {
-    // UV for cell (13, 2) in 16x16 atlas
-    float cellU = 13.0f / 16.0f;
-    float cellV = 2.0f / 16.0f;
+    // UV for cell (cellX, cellY) in 16x16 atlas
+    float cellU = (float)cellX / 16.0f;
+    float cellV = (float)cellY / 16.0f;
     float u0 = cellU, u1 = cellU + 1.0f/16.0f;
     float v0 = cellV, v1 = cellV + 1.0f/16.0f;
 
-    float vertices[] = {
-        // pos (x,y,z)      // uv
-        -0.15f,  0.15f, 0,  u0, v0,
-         0.15f,  0.15f, 0,  u1, v0,
-         0.15f, -0.15f, 0,  u1, v1,
-        -0.15f, -0.15f, 0,  u0, v1,
-    };
+    float vertices[20];
+    if (rotate90) {
+        // 90° clockwise UV rotation
+        float v[] = {
+            -0.15f,  0.15f, 0,  u1, v0,
+             0.15f,  0.15f, 0,  u1, v1,
+             0.15f, -0.15f, 0,  u0, v1,
+            -0.15f, -0.15f, 0,  u0, v0,
+        };
+        for (int i = 0; i < 20; i++) vertices[i] = v[i];
+    } else {
+        float v[] = {
+            -0.15f,  0.15f, 0,  u0, v0,
+             0.15f,  0.15f, 0,  u1, v0,
+             0.15f, -0.15f, 0,  u1, v1,
+            -0.15f, -0.15f, 0,  u0, v1,
+        };
+        for (int i = 0; i < 20; i++) vertices[i] = v[i];
+    }
     unsigned int indices[] = { 0, 1, 2, 0, 2, 3 };
 
     glGenVertexArrays(1, &m_vao);
@@ -57,12 +69,17 @@ void ProjectileRenderer::buildQuad()
 
 void ProjectileRenderer::addProjectile(const SpiderProjectile& p)
 {
-    m_positions.push_back(p.position);
+    m_entries.push_back({p.position, 1.0f});
+}
+
+void ProjectileRenderer::addPosition(const glm::vec3& pos, float scale)
+{
+    m_entries.push_back({pos, scale});
 }
 
 void ProjectileRenderer::render(const Camera& camera)
 {
-    if (m_positions.empty()) return;
+    if (m_entries.empty()) return;
 
     m_shader.useProgram();
     m_shader.loadProjectionViewMatrix(camera.getProjectionViewMatrix());
@@ -72,12 +89,12 @@ void ProjectileRenderer::render(const Camera& camera)
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    for (const auto& pos : m_positions) {
+    for (const auto& e : m_entries) {
         glm::mat4 model(1.0f);
-        model = glm::translate(model, pos);
+        model = glm::translate(model, e.pos);
+        model = glm::scale(model, glm::vec3(e.scale));
 
-        // Billboard Y-rotation toward camera (camera.position is Entity::position)
-        glm::vec3 toCam = camera.position - pos;
+        glm::vec3 toCam = camera.position - e.pos;
         float yaw = glm::degrees(std::atan2(toCam.x, toCam.z));
         model = glm::rotate(model, glm::radians(yaw), glm::vec3(0, 1, 0));
 
@@ -88,5 +105,5 @@ void ProjectileRenderer::render(const Camera& camera)
     glDisable(GL_BLEND);
     glBindVertexArray(0);
 
-    m_positions.clear();
+    m_entries.clear();
 }

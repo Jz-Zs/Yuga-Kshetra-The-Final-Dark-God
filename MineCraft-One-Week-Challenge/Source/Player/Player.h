@@ -55,6 +55,9 @@ class Player : public Entity {
     ItemStack m_equipment[2] = {ItemStack(Material::NOTHING, 0), ItemStack(Material::NOTHING, 0)};
     int m_equipSlot = 0; // 0=主手, 1=副手
 
+    // 物品栏 (Application 需要直接访问)
+    std::vector<ItemStack> m_items;
+
     // 合成系统
     ItemStack m_craftGrid[9];
     const CraftingRecipe* m_currentRecipe = nullptr;
@@ -64,6 +67,10 @@ class Player : public Entity {
     float m_miningProgress = 0.0f;
     bool m_isMining = false;
     glm::ivec3 m_miningTarget{0, -999, 0};
+
+    // Bow charge (equipment slot bow, Shift+LeftClick)
+    float m_bowCharge = 0.0f;       // 0.0 ~ 1.0
+    bool m_bowCharging = false;
 
     // 食用进度（长按右键吃野果）
     float m_eatProgress = 0.0f;
@@ -80,6 +87,8 @@ class Player : public Entity {
     bool isMining() const { return m_isMining; }
     float getEatProgress() const { return m_eatProgress; }
     bool isEating() const { return m_isEating; }
+    float getBowCharge() const { return m_bowCharge; }
+    bool isBowCharging() const { return m_bowCharging; }
     void updateEating(float dt, bool rightHeld);
     bool isBackpackOpen() const { return m_backpackOpen; }
     bool isUIOpen() const { return m_backpackOpen || m_furnaceUIOpen; }
@@ -142,7 +151,6 @@ class Player : public Entity {
     bool m_isFlying = false;
     bool m_isSneak = false;
 
-    std::vector<ItemStack> m_items;
     int m_heldItem = 0;
 
     ToggleKey m_itemDown;
