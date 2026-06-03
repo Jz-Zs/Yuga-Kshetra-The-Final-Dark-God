@@ -28,13 +28,6 @@ void initCraftingRecipes()
         &Material::STONE_BLOCK, nullptr, nullptr,
     }, &Material::COBBLESTONE, 1});
 
-    // 3 铁矿(左竖) → 1 铁锭（临时，入口8改熔炉）
-    g_recipes.push_back({{
-        &Material::IRON_ORE_ITEM, nullptr, nullptr,
-        &Material::IRON_ORE_ITEM, nullptr, nullptr,
-        &Material::IRON_ORE_ITEM, nullptr, nullptr,
-    }, &Material::IRON_INGOT, 1});
-
     // 木镐: 3橡木(顶行) + 2木棍(中下竖)
     g_recipes.push_back({{
         &Material::OAK_BARK_BLOCK, &Material::OAK_BARK_BLOCK, &Material::OAK_BARK_BLOCK,
@@ -90,6 +83,13 @@ void initCraftingRecipes()
         nullptr,                &Material::STICK,       nullptr,
         nullptr,                nullptr,               &Material::STICK,
     }, &Material::STONE_ARROW, 4});
+
+    // 8 Cobblestone ring → Furnace
+    g_recipes.push_back({{
+        &Material::COBBLESTONE, &Material::COBBLESTONE, &Material::COBBLESTONE,
+        &Material::COBBLESTONE, nullptr,                &Material::COBBLESTONE,
+        &Material::COBBLESTONE, &Material::COBBLESTONE, &Material::COBBLESTONE,
+    }, &Material::FURNACE, 1});
 }
 
 const CraftingRecipe* findMatchingRecipe(const ItemStack grid[9])

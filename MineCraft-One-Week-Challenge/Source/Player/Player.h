@@ -16,11 +16,20 @@ class Camera;
 #include "../Item/ItemStack.h"
 #include "../Item/CraftingRecipe.h"
 #include "../Entity/ItemDropEntity.h"
+#include "../Item/SmeltingRecipe.h"
 #include "../Util/BitmapText.h"
 
 class Keyboard;
 class World;
 class RenderMaster;
+
+struct FurnaceState {
+    ItemStack input;
+    ItemStack fuel;
+    ItemStack output;
+    float progress = 0.f;    // 0.0 ~ 1.0
+    bool isSmelting = false;
+};
 
 class Player : public Entity {
   public:
@@ -73,7 +82,12 @@ class Player : public Entity {
     bool isEating() const { return m_isEating; }
     void updateEating(float dt, bool rightHeld);
     bool isBackpackOpen() const { return m_backpackOpen; }
-    bool isMouseLockedForUI() const { return m_mouseLocked && !m_backpackOpen; }
+    bool isUIOpen() const { return m_backpackOpen || m_furnaceUIOpen; }
+    void onFurnaceMined();
+    void onWorldReset();
+    void drawFurnaceUI();
+    bool hasFurnace() const;
+    bool isMouseLockedForUI() const { return m_mouseLocked && !isUIOpen(); }
     void triggerSwing() { m_isSwinging = true; m_swingTimer = 0.0f; }
 
     // Combat
@@ -101,6 +115,11 @@ class Player : public Entity {
     enum class SettlementOutcome { Success, TimeUp, Death };
     SettlementOutcome m_settlementOutcome = SettlementOutcome::Success;
     bool m_requestNewRound = false;
+
+    // 熔炉系统
+    FurnaceState m_furnace;
+    bool m_furnaceUIOpen = false;
+    glm::ivec3 m_furnacePos{-1, -1, -1};  // 已放置熔炉坐标，(-1,-1,-1)=未放置
 
     void clearInventory() {
         for (int i = 0; i < 17; i++) m_items[i] = ItemStack();
@@ -153,6 +172,7 @@ class Player : public Entity {
     BitmapText m_hudText;          // Chinese text for timer + settlement screen
     BitmapText m_buttonText;       // Chinese text for settlement button
     BitmapText m_discardText;      // Chinese text for discard confirmation popup
+    BitmapText m_furnaceText;      // Chinese text for furnace UI title/button
 
     std::vector<ItemDropEntity>* m_pDropItems = nullptr;
 };

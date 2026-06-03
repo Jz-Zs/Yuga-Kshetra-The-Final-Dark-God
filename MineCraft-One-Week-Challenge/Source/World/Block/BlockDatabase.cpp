@@ -37,6 +37,7 @@ BlockDatabase::BlockDatabase()
     m_blocks[(int)BlockId::StoneAxe] = std::make_unique<DefaultBlock>("StoneAxe");
     m_blocks[(int)BlockId::IronAxe] = std::make_unique<DefaultBlock>("IronAxe");
     m_blocks[(int)BlockId::IronSword] = std::make_unique<DefaultBlock>("IronSword");
+    m_blocks[(int)BlockId::Furnace] = std::make_unique<DefaultBlock>("Furnace");
 }
 
 BlockDatabase &BlockDatabase::get()

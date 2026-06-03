@@ -54,6 +54,45 @@ void PlayerDigEvent::dig(World &world)
                 world.spawnDrop(glm::ivec3(x, y, z), BlockId::WildFruit);
             }
 
+            // 挖掘熔炉：掉落内容物
+            if (block.id == (int)BlockId::Furnace) {
+                FurnaceState& fs = m_pPlayer->m_furnace;
+                // 掉落输入槽物品
+                if (fs.input.getMaterial().id != Material::ID::Nothing) {
+                    for (int i = 0; i < fs.input.getNumInStack(); i++) {
+                        world.spawnDrop(glm::ivec3(x, y, z),
+                            fs.input.getMaterial().toBlockID());
+                    }
+                }
+                // 掉落燃料槽物品
+                if (fs.fuel.getMaterial().id != Material::ID::Nothing) {
+                    for (int i = 0; i < fs.fuel.getNumInStack(); i++) {
+                        world.spawnDrop(glm::ivec3(x, y, z),
+                            fs.fuel.getMaterial().toBlockID());
+                    }
+                }
+                // 掉落输出槽物品
+                if (fs.output.getMaterial().id != Material::ID::Nothing) {
+                    const auto& outM = fs.output.getMaterial();
+                    if (outM.toBlockID() != BlockId::NUM_TYPES) {
+                        for (int i = 0; i < fs.output.getNumInStack(); i++) {
+                            world.spawnDrop(glm::ivec3(x, y, z), outM.toBlockID());
+                        }
+                    } else {
+                        // CookedMeat not a block, spawn directly
+                        for (int i = 0; i < fs.output.getNumInStack(); i++) {
+                            ItemDropEntity drop;
+                            drop.position = glm::vec3(x + 0.5f, y + 0.75f, z + 0.5f);
+                            drop.velocity = glm::vec3(0.0f);
+                            drop.material = &outM;
+                            drop.alive = true;
+                            world.getDropItems().push_back(drop);
+                        }
+                    }
+                }
+                m_pPlayer->onFurnaceMined();
+            }
+
             world.updateChunk(x, y, z);
             world.setBlock(x, y, z, 0);
             break;
@@ -69,6 +108,10 @@ void PlayerDigEvent::dig(World &world)
             stack.remove();
             world.updateChunk(x, y, z);
             world.setBlock(x, y, z, material.toBlockID());
+            // 如果放置的是熔炉，记录坐标
+            if (material.id == Material::ID::Furnace) {
+                m_pPlayer->m_furnacePos = glm::ivec3(x, y, z);
+            }
             break;
         }
         default:

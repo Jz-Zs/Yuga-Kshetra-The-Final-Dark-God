@@ -35,6 +35,7 @@ enum class BlockId : Block_t {
     StoneAxe = 25,
     IronAxe = 26,
     IronSword = 27,
+    Furnace = 28,
 
     NUM_TYPES
 };

@@ -38,7 +38,9 @@ struct Material : public NonCopyable {
         WoodenAxe,
         StoneAxe,
         IronAxe,
-        IronSword
+        IronSword,
+        CookedMeat,
+        Furnace
     };
 
     const static Material NOTHING, GRASS_BLOCK, DIRT_BLOCK, STONE_BLOCK,
@@ -50,6 +52,8 @@ struct Material : public NonCopyable {
     const static Material COBBLESTONE, IRON_ORE_ITEM, IRON_INGOT, WILD_FRUIT,
         STONE_ARROW, WOODEN_PICKAXE, STONE_PICKAXE, IRON_PICKAXE,
         WOODEN_AXE, STONE_AXE, IRON_AXE, IRON_SWORD;
+
+    const static Material COOKED_MEAT, FURNACE;
 
     Material(Material::ID id, int maxStack, bool isBlock, std::string &&name,
              uint8_t toolClass = 0, uint8_t toolTier = 0,

@@ -52,6 +52,9 @@ void World::resetWorld(const Camera &camera, Player &player)
     player.position = m_playerSpawnPoint;
     player.velocity = {0, 0, 0};
 
+    // 清理熔炉状态
+    player.onWorldReset();
+
     m_extractionActive = false;
 
     // 4. Spawn initial pigmen (max 8)

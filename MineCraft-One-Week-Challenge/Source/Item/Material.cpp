@@ -43,6 +43,8 @@ const Material Material::IRON_AXE(ID::IronAxe, 1, false, "Iron Axe",
 
 const Material Material::IRON_SWORD(ID::IronSword, 1, false, "Iron Sword",
     3, 0, 1.0f, 20);  // Sword, 非工具, +20 atk
+const Material Material::COOKED_MEAT(Material::ID::CookedMeat, 30, false, "Cooked Meat");
+const Material Material::FURNACE(Material::ID::Furnace, 1, true, "Furnace");
 
 Material::Material(Material::ID id, int maxStack, bool isBlock,
                    std::string &&name,
@@ -119,6 +121,8 @@ BlockId Material::toBlockID() const
         case StoneAxe:       return BlockId::StoneAxe;
         case IronAxe:        return BlockId::IronAxe;
         case IronSword:      return BlockId::IronSword;
+        case CookedMeat:  return BlockId::NUM_TYPES;  // 非方块物品
+        case Furnace:     return BlockId::Furnace;
 
         default:
             return BlockId::NUM_TYPES;
@@ -180,6 +184,7 @@ const Material &Material::toMaterial(BlockId id)
         case BlockId::StoneAxe:       return STONE_AXE;
         case BlockId::IronAxe:        return IRON_AXE;
         case BlockId::IronSword:      return IRON_SWORD;
+        case BlockId::Furnace: return FURNACE;
 
         default:
             return NOTHING;

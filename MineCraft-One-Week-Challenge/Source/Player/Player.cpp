@@ -76,6 +76,39 @@ bool Player::addItem(const Material& material)
     return false; // Inventory full
 }
 
+bool Player::hasFurnace() const
+{
+    // 检查是否有已放置的熔炉
+    if (m_furnacePos != glm::ivec3{-1, -1, -1})
+        return true;
+
+    // 检查背包中是否有熔炉物品
+    for (const auto& stack : m_items) {
+        if (stack.getMaterial().id == Material::ID::Furnace)
+            return true;
+    }
+    // 检查装备栏
+    for (int i = 0; i < 2; i++) {
+        if (m_equipment[i].getMaterial().id == Material::ID::Furnace)
+            return true;
+    }
+    return false;
+}
+
+void Player::onFurnaceMined()
+{
+    m_furnacePos = {-1, -1, -1};
+    m_furnaceUIOpen = false;
+    m_furnace = FurnaceState{};
+}
+
+void Player::onWorldReset()
+{
+    m_furnacePos = {-1, -1, -1};
+    m_furnaceUIOpen = false;
+    m_furnace = FurnaceState{};
+}
+
 void Player::setDropItems(std::vector<ItemDropEntity>* drops)
 {
     m_pDropItems = drops;
@@ -165,6 +198,43 @@ void Player::update(float dt, World& world)
     if (m_isFlying)
     {
         velocity.y *= 0.95f;
+    }
+
+    // 熔炉冶炼计时（后台继续，不受UI开关影响）
+    if (m_furnace.isSmelting) {
+        const SmeltingRecipe* recipe = findSmeltingRecipe(
+            m_furnace.input.getMaterial().id, m_furnace.input.getNumInStack(),
+            m_furnace.fuel.getMaterial().id, m_furnace.fuel.getNumInStack());
+        if (recipe) {
+            m_furnace.progress += dt / 5.0f;  // 5秒冶炼时间
+            if (m_furnace.progress >= 1.0f) {
+                // 消耗输入和燃料
+                for (int i = 0; i < recipe->inputCount; i++)
+                    m_furnace.input.remove();
+                for (int i = 0; i < recipe->fuelCount; i++)
+                    m_furnace.fuel.remove();
+                // 产出
+                const Material& outMat = (recipe->output == Material::ID::IronIngot)
+                    ? static_cast<const Material&>(Material::IRON_INGOT)
+                    : static_cast<const Material&>(Material::COOKED_MEAT);
+                if (m_furnace.output.getMaterial().id == Material::ID::Nothing) {
+                    m_furnace.output = ItemStack(outMat, recipe->outputCount);
+                } else {
+                    m_furnace.output.add(recipe->outputCount);
+                }
+                m_furnace.progress = 0.f;
+                // 检查是否可以继续下一轮
+                const SmeltingRecipe* next = findSmeltingRecipe(
+                    m_furnace.input.getMaterial().id, m_furnace.input.getNumInStack(),
+                    m_furnace.fuel.getMaterial().id, m_furnace.fuel.getNumInStack());
+                if (!next)
+                    m_furnace.isSmelting = false;
+            }
+        } else {
+            // 材料/燃料不足 → 停止冶炼，重置进度
+            m_furnace.isSmelting = false;
+            m_furnace.progress = 0.f;
+        }
     }
 }
 
@@ -428,6 +498,355 @@ void Player::drawTimer()
     ImGui::PopStyleVar();
 }
 
+void Player::drawFurnaceUI()
+{
+    if (!m_furnaceUIOpen) return;
+
+    auto& atlas = BlockDatabase::get().textureAtlas;
+    GLuint atlasID = atlas.getID();
+    const float slotSize = 48.0f;
+    const float padding = 4.0f;
+    const float texPad = 4.0f;
+    const float titleH = 22.0f;
+
+    auto displaySize = ImGui::GetIO().DisplaySize;
+    const int cols = 5;
+    float hotbarW = cols * (slotSize + padding) + padding;
+    float hotbarContentH = 1 * (slotSize + padding) + padding;
+    float hotbarY = displaySize.y - hotbarContentH - 10.0f;
+    float bpContentH = 3 * (slotSize + padding) + padding + 22.0f;
+    float bpY = hotbarY - bpContentH - 6.0f;
+    float craftContentH = 3 * (slotSize + padding) + padding + 22.0f;
+    float craftY = bpY - craftContentH - 6.0f;
+
+    float furnaceContentH = titleH + slotSize * 2 + padding * 3;
+    float furnaceWinW = hotbarW;
+    float furnaceX = (displaySize.x - furnaceWinW) * 0.5f;
+    float furnaceY = craftY - furnaceContentH - 6.0f;
+
+    const int winFlags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+                         ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar |
+                         ImGuiWindowFlags_NoBringToFrontOnFocus;
+
+    // --- Prepare quantity BitmapText for furnace slots ---
+    std::vector<std::string> qtyLines;
+    int qtyMap[3] = {-1, -1, -1};
+    auto pushQty = [&](int idx, const ItemStack& stack) {
+        int n = stack.getNumInStack();
+        if (n > 1) {
+            qtyMap[idx] = (int)qtyLines.size();
+            qtyLines.push_back(std::to_string(n));
+        }
+    };
+    pushQty(0, m_furnace.input);
+    pushQty(1, m_furnace.fuel);
+    pushQty(2, m_furnace.output);
+    int qtyTexW = 40, qtyTexH = 0;
+    GLuint qtyTexId = 0;
+    if (!qtyLines.empty()) {
+        qtyTexH = 4 + (int)(qtyLines.size() * 26.4f) + 4;
+        qtyTexId = m_bitmapText.update(qtyLines, qtyTexW, qtyTexH);
+    }
+    auto drawFurnaceQty = [&](int idx, ImVec2 p1) {
+        int lineIdx = qtyMap[idx];
+        if (lineIdx < 0 || qtyTexId == 0) return;
+        float lineY = 4.0f + lineIdx * 26.4f;
+        float glyphH = 26.0f;
+        float measuredW = (float)m_bitmapText.measureTextWidth(qtyLines[lineIdx]);
+        float glyphW = measuredW + 8.0f;
+        ImVec2 qtyUV0(0.08f, lineY / qtyTexH);
+        ImVec2 qtyUV1((4.0f + glyphW) / qtyTexW, (lineY + glyphH) / qtyTexH);
+        float qtyH = 20.0f;
+        float qtyW = glyphW * (qtyH / glyphH);
+        ImGui::GetWindowDrawList()->AddImage(
+            (ImTextureID)(intptr_t)qtyTexId,
+            ImVec2(p1.x - qtyW - 1.0f, p1.y - qtyH),
+            ImVec2(p1.x - 1.0f, p1.y),
+            qtyUV0, qtyUV1);
+    };
+
+    // --- Title: "熔  炉" (uses m_furnaceText, separate from Timer's m_hudText) ---
+    std::string titleStr = "熔  炉";
+    m_furnaceText.setFontSize(20.0f);
+    int titleTexW = m_furnaceText.measureTextWidth(titleStr) + 12;
+    int titleTexH = (int)(20.0f * 1.1f) + 4;
+    GLuint titleTexId = m_furnaceText.update({titleStr}, titleTexW, titleTexH, true);
+
+    // --- Close button "X" (uses m_buttonText, only used when Settlement is off) ---
+    m_buttonText.setFontSize(18.0f);
+    int closeTexW = m_buttonText.measureTextWidth("X") + 8;
+    int closeTexH = (int)(18.0f * 1.1f) + 4;
+    GLuint closeTexId = m_buttonText.update({"X"}, closeTexW, closeTexH, true);
+
+    ImGui::SetNextWindowPos(ImVec2(furnaceX, furnaceY), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(furnaceWinW, furnaceContentH), ImGuiCond_Always);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    if (ImGui::Begin("Furnace", nullptr, winFlags)) {
+        ImVec2 winPos = ImGui::GetWindowPos();
+        auto* dl = ImGui::GetWindowDrawList();
+
+        // --- Title ---
+        if (titleTexId) {
+            float tx = winPos.x + (furnaceWinW - titleTexW) * 0.5f;
+            dl->AddImage((ImTextureID)(intptr_t)titleTexId,
+                         ImVec2(tx, winPos.y + 2.0f),
+                         ImVec2(tx + titleTexW, winPos.y + 2.0f + titleTexH));
+        }
+
+        // --- Close button [X] ---
+        float closeX = winPos.x + furnaceWinW - closeTexW - 8.0f;
+        float closeY = winPos.y + 2.0f;
+        ImGui::SetCursorScreenPos(ImVec2(closeX, closeY));
+        ImGui::PushID("furnaceClose");
+        if (ImGui::InvisibleButton("##furnaceCloseBtn", ImVec2((float)closeTexW, (float)closeTexH)))
+            m_furnaceUIOpen = false;
+        ImGui::PopID();
+        bool closeHovered = ImGui::IsItemHovered();
+        dl->AddImage((ImTextureID)(intptr_t)closeTexId,
+                     ImVec2(closeX, closeY), ImVec2(closeX + closeTexW, closeY + closeTexH),
+                     ImVec2(0, 0), ImVec2(1, 1),
+                     closeHovered ? IM_COL32(255, 80, 80, 255) : IM_COL32(200, 200, 200, 255));
+
+        // Slots Y positions (below title)
+        float inputX = padding;
+        float inputY = titleH + padding;
+        float outputX = furnaceWinW - padding - slotSize;
+        float outputY = titleH + padding;
+
+        // ==================== INPUT SLOT ====================
+        ImGui::SetCursorPos(ImVec2(inputX, inputY));
+        ImGui::PushID(400);
+        ImVec2 inP0 = ImGui::GetCursorScreenPos();
+        ImGui::Dummy(ImVec2(slotSize, slotSize));
+        ImVec2 inP1(inP0.x + slotSize, inP0.y + slotSize);
+        dl->AddRectFilled(inP0, inP1, IM_COL32(60, 60, 60, 200));
+        dl->AddRect(inP0, inP1, IM_COL32(180, 180, 180, 255));
+        const auto& inMat = m_furnace.input.getMaterial();
+        if (inMat.id != Material::ID::Nothing) {
+            BlockId bId = inMat.toBlockID();
+            const auto& bd = BlockDatabase::get().getData(bId);
+            auto uv = atlas.getTexture(bd.getBlockData().texTopCoord);
+            dl->AddImage((ImTextureID)(intptr_t)atlasID,
+                ImVec2(inP0.x + texPad, inP0.y + texPad),
+                ImVec2(inP1.x - texPad, inP1.y - texPad),
+                ImVec2(uv[2], uv[5]), ImVec2(uv[0], uv[3]));
+            drawFurnaceQty(0, inP1);
+            // Drag source
+            if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+                int fakeSlot = 900;
+                ImGui::SetDragDropPayload("INV_SLOT", &fakeSlot, sizeof(int));
+                auto duv = atlas.getTexture(bd.getBlockData().texTopCoord);
+                ImGui::Image((ImTextureID)(intptr_t)atlasID, ImVec2(slotSize * 0.7f, slotSize * 0.7f),
+                             ImVec2(duv[2], duv[5]), ImVec2(duv[0], duv[3]));
+                ImGui::EndDragDropSource();
+            }
+        }
+        // Drag target
+        if (ImGui::BeginDragDropTarget()) {
+            const ImGuiPayload* pl = ImGui::AcceptDragDropPayload("INV_SLOT");
+            if (pl) {
+                int src = *(const int*)pl->Data;
+                const auto& sm = m_items[src].getMaterial();
+                if (sm.id != Material::ID::Nothing) {
+                    const auto& curMat = m_furnace.input.getMaterial();
+                    if (curMat.id == Material::ID::Nothing || curMat.id == sm.id) {
+                        if (curMat.id == Material::ID::Nothing)
+                            m_furnace.input = ItemStack(sm, 1);
+                        else
+                            m_furnace.input.add(1);
+                        m_items[src].remove();
+                        m_furnace.isSmelting = false; m_furnace.progress = 0.f;
+                    }
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+        // Shift+click quick-add
+        if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)
+            && sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LShift)) {
+            const auto& hm = m_items[m_heldItem].getMaterial();
+            if (hm.id != Material::ID::Nothing) {
+                const auto& curMat = m_furnace.input.getMaterial();
+                if (curMat.id == Material::ID::Nothing || curMat.id == hm.id) {
+                    if (curMat.id == Material::ID::Nothing)
+                        m_furnace.input = ItemStack(hm, 1);
+                    else
+                        m_furnace.input.add(1);
+                    m_items[m_heldItem].remove();
+                    m_furnace.isSmelting = false; m_furnace.progress = 0.f;
+                }
+            }
+        }
+        // Left-click retrieve (without Shift)
+        if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)
+            && !sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LShift)) {
+            if (inMat.id != Material::ID::Nothing && addItem(inMat)) {
+                m_furnace.input.remove();
+                m_furnace.isSmelting = false; m_furnace.progress = 0.f;
+            }
+        }
+        ImGui::PopID();
+
+        // ==================== OUTPUT SLOT ====================
+        ImGui::SetCursorPos(ImVec2(outputX, outputY));
+        ImGui::PushID(401);
+        ImVec2 outP0 = ImGui::GetCursorScreenPos();
+        ImGui::Dummy(ImVec2(slotSize, slotSize));
+        ImVec2 outP1(outP0.x + slotSize, outP0.y + slotSize);
+        dl->AddRectFilled(outP0, outP1, IM_COL32(50, 50, 50, 200));
+        dl->AddRect(outP0, outP1, IM_COL32(200, 200, 100, 255));
+        const auto& outMat = m_furnace.output.getMaterial();
+        if (outMat.id != Material::ID::Nothing) {
+            std::array<GLfloat, 8> uv;
+            if (outMat.id == Material::ID::CookedMeat) {
+                uv = atlas.getTexture(sf::Vector2i(12, 2));
+            } else {
+                const auto& bd = BlockDatabase::get().getData(outMat.toBlockID());
+                uv = atlas.getTexture(bd.getBlockData().texTopCoord);
+            }
+            dl->AddImage((ImTextureID)(intptr_t)atlasID,
+                ImVec2(outP0.x + texPad, outP0.y + texPad),
+                ImVec2(outP1.x - texPad, outP1.y - texPad),
+                ImVec2(uv[2], uv[5]), ImVec2(uv[0], uv[3]));
+            drawFurnaceQty(2, outP1);
+        }
+        // Left-click to retrieve only (no drag-in)
+        if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+            if (outMat.id != Material::ID::Nothing && addItem(outMat))
+                m_furnace.output.remove();
+        }
+        ImGui::PopID();
+
+        // ==================== FUEL SLOT ====================
+        float fuelX = padding;
+        float fuelY = inputY + slotSize + padding;
+        ImGui::SetCursorPos(ImVec2(fuelX, fuelY));
+        ImGui::PushID(402);
+        ImVec2 fuelP0 = ImGui::GetCursorScreenPos();
+        ImGui::Dummy(ImVec2(slotSize, slotSize));
+        ImVec2 fuelP1(fuelP0.x + slotSize, fuelP0.y + slotSize);
+        dl->AddRectFilled(fuelP0, fuelP1, IM_COL32(60, 60, 60, 200));
+        dl->AddRect(fuelP0, fuelP1, IM_COL32(180, 180, 180, 255));
+        const auto& fuelMat = m_furnace.fuel.getMaterial();
+        if (fuelMat.id != Material::ID::Nothing) {
+            BlockId bId = fuelMat.toBlockID();
+            const auto& bd = BlockDatabase::get().getData(bId);
+            auto uv = atlas.getTexture(bd.getBlockData().texTopCoord);
+            dl->AddImage((ImTextureID)(intptr_t)atlasID,
+                ImVec2(fuelP0.x + texPad, fuelP0.y + texPad),
+                ImVec2(fuelP1.x - texPad, fuelP1.y - texPad),
+                ImVec2(uv[2], uv[5]), ImVec2(uv[0], uv[3]));
+            drawFurnaceQty(1, fuelP1);
+            // Drag source
+            if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+                int fakeSlot = 901;
+                ImGui::SetDragDropPayload("INV_SLOT", &fakeSlot, sizeof(int));
+                auto duv = atlas.getTexture(bd.getBlockData().texTopCoord);
+                ImGui::Image((ImTextureID)(intptr_t)atlasID, ImVec2(slotSize * 0.7f, slotSize * 0.7f),
+                             ImVec2(duv[2], duv[5]), ImVec2(duv[0], duv[3]));
+                ImGui::EndDragDropSource();
+            }
+        }
+        // Drag target
+        if (ImGui::BeginDragDropTarget()) {
+            const ImGuiPayload* pl = ImGui::AcceptDragDropPayload("INV_SLOT");
+            if (pl) {
+                int src = *(const int*)pl->Data;
+                const auto& sm = m_items[src].getMaterial();
+                if (sm.id != Material::ID::Nothing) {
+                    const auto& curMat = m_furnace.fuel.getMaterial();
+                    if (curMat.id == Material::ID::Nothing || curMat.id == sm.id) {
+                        if (curMat.id == Material::ID::Nothing)
+                            m_furnace.fuel = ItemStack(sm, 1);
+                        else
+                            m_furnace.fuel.add(1);
+                        m_items[src].remove();
+                        m_furnace.isSmelting = false; m_furnace.progress = 0.f;
+                    }
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+        // Shift+click quick-add
+        if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)
+            && sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LShift)) {
+            const auto& hm = m_items[m_heldItem].getMaterial();
+            if (hm.id != Material::ID::Nothing) {
+                const auto& curMat = m_furnace.fuel.getMaterial();
+                if (curMat.id == Material::ID::Nothing || curMat.id == hm.id) {
+                    if (curMat.id == Material::ID::Nothing)
+                        m_furnace.fuel = ItemStack(hm, 1);
+                    else
+                        m_furnace.fuel.add(1);
+                    m_items[m_heldItem].remove();
+                    m_furnace.isSmelting = false; m_furnace.progress = 0.f;
+                }
+            }
+        }
+        // Left-click retrieve (without Shift)
+        if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)
+            && !sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LShift)) {
+            if (fuelMat.id != Material::ID::Nothing && addItem(fuelMat)) {
+                m_furnace.fuel.remove();
+                m_furnace.isSmelting = false; m_furnace.progress = 0.f;
+            }
+        }
+        ImGui::PopID();
+
+        // ==================== ARROW + PROGRESS RING ====================
+        {
+            float arrowStartX = inputX + slotSize + 8.0f;
+            float arrowEndX = outputX - 8.0f;
+            float arrowY = inputY + slotSize * 0.5f;
+            dl->AddLine(ImVec2(winPos.x + arrowStartX, winPos.y + arrowY),
+                        ImVec2(winPos.x + arrowEndX - 10, winPos.y + arrowY),
+                        IM_COL32(255, 255, 255, 220), 3.0f);
+            dl->AddLine(ImVec2(winPos.x + arrowEndX - 10, winPos.y + arrowY),
+                        ImVec2(winPos.x + arrowEndX - 2, winPos.y + arrowY - 7),
+                        IM_COL32(255, 255, 255, 220), 3.0f);
+            dl->AddLine(ImVec2(winPos.x + arrowEndX - 10, winPos.y + arrowY),
+                        ImVec2(winPos.x + arrowEndX - 2, winPos.y + arrowY + 7),
+                        IM_COL32(255, 255, 255, 220), 3.0f);
+
+            if (m_furnace.isSmelting) {
+                float cx = winPos.x + (arrowStartX + arrowEndX) * 0.5f;
+                float cy = winPos.y + arrowY;
+                float r = 20.0f;
+                float pi = 3.14159265f;
+                int segs = 36;
+                float full = m_furnace.progress * 2.0f * pi;
+                float startAngle = -pi / 2.0f;
+                ImVec2 prev(cx + r * cosf(startAngle), cy + r * sinf(startAngle));
+                for (int i = 1; i <= segs; i++) {
+                    float a = (float)i / (float)segs * full;
+                    if (a > 2.0f * pi) a = 2.0f * pi;
+                    ImVec2 pt(cx + r * cosf(startAngle + a), cy + r * sinf(startAngle + a));
+                    dl->AddLine(prev, pt, IM_COL32(255, 180, 60, 240), 3.0f);
+                    prev = pt;
+                }
+            }
+        }
+
+        // ==================== AUTO-START SMELTING ====================
+        if (!m_furnace.isSmelting) {
+            const SmeltingRecipe* recipe = findSmeltingRecipe(
+                m_furnace.input.getMaterial().id, m_furnace.input.getNumInStack(),
+                m_furnace.fuel.getMaterial().id, m_furnace.fuel.getNumInStack());
+            if (recipe) {
+                const auto& outM = m_furnace.output.getMaterial();
+                const Material& recipeOut = (recipe->output == Material::ID::IronIngot)
+                    ? static_cast<const Material&>(Material::IRON_INGOT)
+                    : static_cast<const Material&>(Material::COOKED_MEAT);
+                if (outM.id == Material::ID::Nothing ||
+                    (outM.id == recipeOut.id && m_furnace.output.getNumInStack() < recipeOut.maxStackSize))
+                    m_furnace.isSmelting = true;
+            }
+        }
+    }
+    ImGui::End();
+    ImGui::PopStyleVar();
+}
+
 void Player::drawSettlement(const Camera* camera)
 {
     // Trigger: round ended OR player dead
@@ -468,6 +887,8 @@ void Player::drawSettlement(const Camera* camera)
             case Material::ID::StoneAxe:      return "石斧";
             case Material::ID::IronAxe:       return "铁斧";
             case Material::ID::IronSword:     return "铁剑";
+            case Material::ID::CookedMeat:  return "熟肉";
+            case Material::ID::Furnace:     return "熔炉";
             default: return "未知";
         }
     };
@@ -645,6 +1066,8 @@ void Player::draw(RenderMaster& master, const Camera* camera)
             case Material::ID::StoneAxe:      return "石斧";
             case Material::ID::IronAxe:       return "铁斧";
             case Material::ID::IronSword:     return "铁剑";
+            case Material::ID::CookedMeat:  return "熟肉";
+            case Material::ID::Furnace:     return "熔炉";
             default: return "未知";
         }
     };
@@ -762,14 +1185,17 @@ void Player::draw(RenderMaster& master, const Camera* camera)
     if (m_roundActive && !m_isDead)
         drawTimer();
 
+    // --- Furnace UI ---
+    drawFurnaceUI();
+
     // --- Backpack + Crafting (B key) ---
     if (m_backpackOpen)
     {
         const int craftRows = 3, craftCols = 3;
         float craftContentW = craftCols * (slotSize + padding) + padding + slotSize + padding + 56.0f;
-        float craftContentH = craftRows * (slotSize + padding) + padding;
+        float craftContentH = craftRows * (slotSize + padding) + padding + 22.0f;
         const int bpRows = 3;
-        float bpContentH = bpRows * (slotSize + padding) + padding;
+        float bpContentH = bpRows * (slotSize + padding) + padding + 22.0f;
 
         // Backpack: above hotbar
         float bpX = (displaySize.x - hotbarW) * 0.5f;
@@ -787,13 +1213,28 @@ void Player::draw(RenderMaster& master, const Camera* camera)
             ImVec2 winPos = ImGui::GetWindowPos();
             auto* wdl = ImGui::GetWindowDrawList();
 
+            // 标题
+            {
+                m_hudText.setFontSize(20.0f);
+                std::string title = "工 作 台";
+                int tw = m_hudText.measureTextWidth(title) + 12;
+                int th = (int)(20.0f * 1.1f) + 4;
+                GLuint tid = m_hudText.update({title}, tw, th, true);
+                if (tid) {
+                    float tx = winPos.x + (craftContentW - tw) * 0.5f;
+                    float ty = winPos.y + 2.0f;
+                    wdl->AddImage((ImTextureID)(intptr_t)tid,
+                                   ImVec2(tx, ty), ImVec2(tx + tw, ty + th));
+                }
+            }
+
             // 3×3 grid
             for (int row = 0; row < craftRows; row++)
                 for (int col = 0; col < craftCols; col++)
                 {
                     int slotIdx = row * craftCols + col;
                     float x = padding + col * (slotSize + padding);
-                    float y = padding + row * (slotSize + padding);
+                    float y = 22.0f + padding + row * (slotSize + padding);
                     ImGui::SetCursorPos(ImVec2(x, y));
                     ImGui::PushID(100 + slotIdx);
                     ImVec2 p0 = ImGui::GetCursorScreenPos();
@@ -860,7 +1301,7 @@ void Player::draw(RenderMaster& master, const Camera* camera)
             // Arrow →
             {
                 float ax = winPos.x + padding + craftCols * (slotSize + padding) + 12.0f;
-                float ay = winPos.y + padding + 1 * (slotSize + padding) + slotSize * 0.5f;
+                float ay = winPos.y + 22.0f + padding + 1 * (slotSize + padding) + slotSize * 0.5f;
                 float len = 20.0f;
                 ImU32 ac = IM_COL32(255, 255, 255, 240);
                 // shaft
@@ -873,7 +1314,7 @@ void Player::draw(RenderMaster& master, const Camera* camera)
             // Result slot
             {
                 float rx = padding + craftCols * (slotSize + padding) + 50.0f;
-                float ry = padding + 1 * (slotSize + padding);
+                float ry = 22.0f + padding + 1 * (slotSize + padding);
                 ImGui::SetCursorPos(ImVec2(rx, ry));
                 ImGui::PushID(200);
                 ImVec2 rp0 = ImGui::GetCursorScreenPos();
@@ -893,7 +1334,10 @@ void Player::draw(RenderMaster& master, const Camera* camera)
                 }
                 if (m_currentRecipe && ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
                     const Material& outMat = *m_currentRecipe->output;
-                    if (addItem(outMat)) {
+                    // 熔炉唯一性检查：已有熔炉则静默拒绝合成
+                    if (outMat.id == Material::ID::Furnace && hasFurnace()) {
+                        // 已有熔炉，不消耗材料，不做任何事
+                    } else if (addItem(outMat)) {
                         for (int i = 0; i < 9; i++)
                             if (m_currentRecipe->pattern[i] != nullptr) m_craftGrid[i].remove();
                         m_currentRecipe = findMatchingRecipe(m_craftGrid);
@@ -911,12 +1355,28 @@ void Player::draw(RenderMaster& master, const Camera* camera)
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
         if (ImGui::Begin("Backpack", nullptr, winFlags))
         {
+            // 标题
+            {
+                m_furnaceText.setFontSize(20.0f);
+                std::string title = "背 包";
+                int tw = m_furnaceText.measureTextWidth(title) + 12;
+                int th = (int)(20.0f * 1.1f) + 4;
+                GLuint tid = m_furnaceText.update({title}, tw, th, true);
+                if (tid) {
+                    ImVec2 winPos = ImGui::GetWindowPos();
+                    float tx = winPos.x + (hotbarW - tw) * 0.5f;
+                    float ty = winPos.y + 2.0f;
+                    ImGui::GetWindowDrawList()->AddImage((ImTextureID)(intptr_t)tid,
+                                       ImVec2(tx, ty), ImVec2(tx + tw, ty + th));
+                }
+            }
+
             for (int bpRow = 0; bpRow < bpRows; bpRow++)
                 for (int col = 0; col < cols; col++)
                 {
                     int slotIndex = 5 + bpRow * cols + col;
                     float x = padding + col * (slotSize + padding);
-                    float y = padding + bpRow * (slotSize + padding);
+                    float y = 22.0f + padding + bpRow * (slotSize + padding);
                     ImGui::SetCursorPos(ImVec2(x, y));
                     ImGui::PushID(slotIndex);
                     ImVec2 p0 = ImGui::GetCursorScreenPos();

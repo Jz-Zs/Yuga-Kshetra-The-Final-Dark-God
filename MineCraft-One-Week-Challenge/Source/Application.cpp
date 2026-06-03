@@ -12,6 +12,7 @@
 #include "World/Event/PlayerDigEvent.h"
 #include "World/WorldConstants.h"
 #include "Item/CraftingRecipe.h"
+#include "Item/SmeltingRecipe.h"
 float g_timeElapsed = 0;
 
 Application::Application(sf::Window& window, const Config& config)
@@ -23,6 +24,7 @@ Application::Application(sf::Window& window, const Config& config)
 {
     BlockDatabase::get();
     initCraftingRecipes();
+    initSmeltingRecipes();
     m_camera.hookEntity(m_player);
 
     if (!m_music.openFromFile("Res/Musics/Minecraft-C418.mp3"))
@@ -62,10 +64,10 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
     bool rightPressed = sf::Mouse::isButtonPressed(sf::Mouse::Button::Right);
 
     // Skip interaction when backpack is open
-    if (!sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LAlt) && !m_player.isBackpackOpen())
+    if (!sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LAlt) && !m_player.isUIOpen())
     {
         // --- Left-click: swing animation for any click ---
-        if (leftClicked && !m_player.isBackpackOpen())
+        if (leftClicked && !m_player.isUIOpen())
             m_player.triggerSwing();
 
         // --- Left-click: pigman attack first, then mining ---
@@ -277,6 +279,12 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
                 }
                 if (block.id != 0 && block.id != (int)BlockId::Water)
                 {
+                    // 右键熔炉→打开UI（无UI打开时才触发）
+                    if (block.id == (int)BlockId::Furnace && !m_player.isUIOpen()) {
+                        m_player.m_furnaceUIOpen = true;
+                        m_rightClickTimer.restart();
+                        break;
+                    }
                     m_rightClickTimer.restart();
                     m_world.addEvent<PlayerDigEvent>(sf::Mouse::Button::Right, lastPosition, m_player);
                     break;
