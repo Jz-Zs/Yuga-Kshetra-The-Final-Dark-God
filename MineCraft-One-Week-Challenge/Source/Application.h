@@ -39,6 +39,8 @@ class Application
     sf::Music m_music;
     ToggleKey m_musicKey{sf::Keyboard::Key::M};
     bool m_musicStarted = false;
+    ToggleKey m_pauseKey{sf::Keyboard::Key::P};
+    bool m_paused = false;
 
     // Extraction spawn tracking (non-static, reset per round)
     bool m_extractionSpawned = false;

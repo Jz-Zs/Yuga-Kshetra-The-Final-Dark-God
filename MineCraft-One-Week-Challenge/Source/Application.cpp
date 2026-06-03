@@ -44,6 +44,20 @@ void Application::on_event(const sf::Event& event)
 
 void Application::on_update(const Keyboard& keyboard, sf::Time dt)
 {
+    float delta = dt.asSeconds();
+
+    // Pause toggle
+    if (m_pauseKey.isKeyPressed()) {
+        m_paused = !m_paused;
+        if (m_paused) {
+            m_music.pause();
+        } else {
+            if (m_music.getStatus() == sf::Music::Status::Paused)
+                m_music.play();
+        }
+    }
+    if (m_paused) return;
+
     // Music: start on first frame, toggle with M
     if (!m_musicStarted) {
         m_music.play();
@@ -56,7 +70,6 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
             m_music.play();
     }
 
-    float delta = dt.asSeconds();
     m_player.handleInput(m_window, keyboard);
     glm::vec3 lastPosition;
 
@@ -516,6 +529,7 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
 void Application::on_render(bool show_debug_info)
 {
     m_player.setDropItems(&m_world.getDropItems());
+    m_player.m_paused = m_paused;
     m_player.draw(m_masterRenderer, &m_camera);
 
     m_world.renderWorld(m_masterRenderer, m_camera);

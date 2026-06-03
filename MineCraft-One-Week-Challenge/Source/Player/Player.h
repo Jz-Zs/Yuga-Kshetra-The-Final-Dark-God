@@ -111,6 +111,7 @@ class Player : public Entity {
 
     // Death
     bool m_isDead = false;
+    bool m_paused = false;
     float m_deathTimer = 0.0f;
 
     // Dynamic difficulty
@@ -191,6 +192,7 @@ class Player : public Entity {
     BitmapText m_bpTitleText;      // Chinese text for backpack window title
     BitmapText m_furnaceQtyText;   // Quantity overlay for furnace slots
     BitmapText m_furnaceCloseText; // Chinese text for furnace close button
+    BitmapText m_pauseText;        // Chinese text for pause overlay
 
     std::vector<ItemDropEntity>* m_pDropItems = nullptr;
 };

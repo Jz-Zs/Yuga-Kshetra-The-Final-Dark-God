@@ -1942,6 +1942,22 @@ void Player::draw(RenderMaster& master, const Camera* camera)
 
     // --- HUD: Settlement Screen (full overlay, top-most) ---
     drawSettlement(camera);
+
+    // --- Pause overlay ---
+    if (m_paused) {
+        auto* fg = ImGui::GetForegroundDrawList();
+        auto sz = ImGui::GetIO().DisplaySize;
+        fg->AddRectFilled(ImVec2(0, 0), ImVec2(sz.x, sz.y), IM_COL32(0, 0, 0, 120));
+        std::string ps = "暂停中";
+        m_pauseText.setFontSize(36.0f);
+        int tw = m_pauseText.measureTextWidth(ps) + 16;
+        int th = (int)(36.0f * 1.2f) + 4;
+        GLuint tid = m_pauseText.update({ps}, tw, th, true, 255, 255, 255);
+        if (tid)
+            fg->AddImage((ImTextureID)(intptr_t)tid,
+                ImVec2((sz.x - tw) * 0.5f, (sz.y - th) * 0.5f),
+                ImVec2((sz.x + tw) * 0.5f, (sz.y + th) * 0.5f));
+    }
 }
 
 void Player::jump()
