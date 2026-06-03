@@ -121,7 +121,7 @@ BlockId Material::toBlockID() const
         case StoneAxe:       return BlockId::StoneAxe;
         case IronAxe:        return BlockId::IronAxe;
         case IronSword:      return BlockId::IronSword;
-        case CookedMeat:  return BlockId::NUM_TYPES;  // 非方块物品
+        case CookedMeat:  return BlockId::CookedMeat_Item;
         case Furnace:     return BlockId::Furnace;
 
         default:

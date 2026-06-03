@@ -35,10 +35,12 @@ Player::Player()
     {
         m_items.emplace_back(Material::NOTHING, 0);
     }
-    // 开局测试用：快捷栏放木剑、木镐、木斧各一把
+    // 开局测试用：快捷栏放木剑、木镐、木斧各一把 + 熔炉 + 铁矿
     m_items[0] = ItemStack(Material::WOODEN_SWORD, 1);
     m_items[1] = ItemStack(Material::WOODEN_PICKAXE, 1);
     m_items[2] = ItemStack(Material::WOODEN_AXE, 1);
+    m_items[3] = ItemStack(Material::FURNACE, 1);
+    m_items[4] = ItemStack(Material::IRON_ORE_ITEM, 64);
     m_equipment[0] = ItemStack(Material::WOODEN_SWORD, 1);  // 主手装备木剑
     for (int i = 0; i < 9; i++)
     {
@@ -57,7 +59,7 @@ bool Player::addItem(const Material& material)
         {
             int leftover = m_items[i].add(1);
             if (leftover == 0) {
-                m_roundCollection[material.id]++;
+                if (material.id != Material::ID::Furnace) m_roundCollection[material.id]++;
                 return true;
             }
             // Stack full, continue to next slot
@@ -519,7 +521,7 @@ void Player::drawFurnaceUI()
     float craftContentH = 3 * (slotSize + padding) + padding + 22.0f;
     float craftY = bpY - craftContentH - 6.0f;
 
-    float furnaceContentH = titleH + slotSize * 2 + padding * 3;
+    float furnaceContentH = titleH + padding + slotSize + (padding + 8.0f) + slotSize + padding;
     float furnaceWinW = hotbarW;
     float furnaceX = (displaySize.x - furnaceWinW) * 0.5f;
     float furnaceY = craftY - furnaceContentH - 6.0f;
@@ -545,14 +547,14 @@ void Player::drawFurnaceUI()
     GLuint qtyTexId = 0;
     if (!qtyLines.empty()) {
         qtyTexH = 4 + (int)(qtyLines.size() * 26.4f) + 4;
-        qtyTexId = m_bitmapText.update(qtyLines, qtyTexW, qtyTexH);
+        qtyTexId = m_furnaceQtyText.update(qtyLines, qtyTexW, qtyTexH);
     }
     auto drawFurnaceQty = [&](int idx, ImVec2 p1) {
         int lineIdx = qtyMap[idx];
         if (lineIdx < 0 || qtyTexId == 0) return;
         float lineY = 4.0f + lineIdx * 26.4f;
         float glyphH = 26.0f;
-        float measuredW = (float)m_bitmapText.measureTextWidth(qtyLines[lineIdx]);
+        float measuredW = (float)m_furnaceQtyText.measureTextWidth(qtyLines[lineIdx]);
         float glyphW = measuredW + 8.0f;
         ImVec2 qtyUV0(0.08f, lineY / qtyTexH);
         ImVec2 qtyUV1((4.0f + glyphW) / qtyTexW, (lineY + glyphH) / qtyTexH);
@@ -572,11 +574,11 @@ void Player::drawFurnaceUI()
     int titleTexH = (int)(20.0f * 1.1f) + 4;
     GLuint titleTexId = m_furnaceText.update({titleStr}, titleTexW, titleTexH, true);
 
-    // --- Close button "X" (uses m_buttonText, only used when Settlement is off) ---
-    m_buttonText.setFontSize(18.0f);
-    int closeTexW = m_buttonText.measureTextWidth("X") + 8;
+    // --- Close button "X" (uses m_furnaceCloseText, independent instance) ---
+    m_furnaceCloseText.setFontSize(18.0f);
+    int closeTexW = m_furnaceCloseText.measureTextWidth("X") + 8;
     int closeTexH = (int)(18.0f * 1.1f) + 4;
-    GLuint closeTexId = m_buttonText.update({"X"}, closeTexW, closeTexH, true);
+    GLuint closeTexId = m_furnaceCloseText.update({"X"}, closeTexW, closeTexH, true);
 
     ImGui::SetNextWindowPos(ImVec2(furnaceX, furnaceY), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(furnaceWinW, furnaceContentH), ImGuiCond_Always);
@@ -607,11 +609,20 @@ void Player::drawFurnaceUI()
                      ImVec2(0, 0), ImVec2(1, 1),
                      closeHovered ? IM_COL32(255, 80, 80, 255) : IM_COL32(200, 200, 200, 255));
 
-        // Slots Y positions (below title)
-        float inputX = padding;
+        // Slots: centered functional area (input + arrow + output), fuel below
+        float totalW = slotSize + 24.0f + 20.0f + 24.0f + slotSize;
+        float areaX = (furnaceWinW - totalW) * 0.5f;
+        float inputX = areaX;
         float inputY = titleH + padding;
-        float outputX = furnaceWinW - padding - slotSize;
+        float outputX = areaX + slotSize + 24.0f + 20.0f + 24.0f;
         float outputY = titleH + padding;
+        float fuelX = areaX;
+        float fuelY = inputY + slotSize + padding + 8.0f;
+
+        // Arrow region: between input and output
+        float arrowX = areaX + slotSize + 24.0f;
+        float arrowY = inputY + slotSize * 0.5f;
+        float arrowLen = 20.0f;
 
         // ==================== INPUT SLOT ====================
         ImGui::SetCursorPos(ImVec2(inputX, inputY));
@@ -697,13 +708,8 @@ void Player::drawFurnaceUI()
         dl->AddRect(outP0, outP1, IM_COL32(200, 200, 100, 255));
         const auto& outMat = m_furnace.output.getMaterial();
         if (outMat.id != Material::ID::Nothing) {
-            std::array<GLfloat, 8> uv;
-            if (outMat.id == Material::ID::CookedMeat) {
-                uv = atlas.getTexture(sf::Vector2i(12, 2));
-            } else {
-                const auto& bd = BlockDatabase::get().getData(outMat.toBlockID());
-                uv = atlas.getTexture(bd.getBlockData().texTopCoord);
-            }
+            const auto& bd = BlockDatabase::get().getData(outMat.toBlockID());
+            auto uv = atlas.getTexture(bd.getBlockData().texTopCoord);
             dl->AddImage((ImTextureID)(intptr_t)atlasID,
                 ImVec2(outP0.x + texPad, outP0.y + texPad),
                 ImVec2(outP1.x - texPad, outP1.y - texPad),
@@ -718,8 +724,6 @@ void Player::drawFurnaceUI()
         ImGui::PopID();
 
         // ==================== FUEL SLOT ====================
-        float fuelX = padding;
-        float fuelY = inputY + slotSize + padding;
         ImGui::SetCursorPos(ImVec2(fuelX, fuelY));
         ImGui::PushID(402);
         ImVec2 fuelP0 = ImGui::GetCursorScreenPos();
@@ -795,21 +799,22 @@ void Player::drawFurnaceUI()
 
         // ==================== ARROW + PROGRESS RING ====================
         {
-            float arrowStartX = inputX + slotSize + 8.0f;
-            float arrowEndX = outputX - 8.0f;
-            float arrowY = inputY + slotSize * 0.5f;
-            dl->AddLine(ImVec2(winPos.x + arrowStartX, winPos.y + arrowY),
-                        ImVec2(winPos.x + arrowEndX - 10, winPos.y + arrowY),
-                        IM_COL32(255, 255, 255, 220), 3.0f);
-            dl->AddLine(ImVec2(winPos.x + arrowEndX - 10, winPos.y + arrowY),
-                        ImVec2(winPos.x + arrowEndX - 2, winPos.y + arrowY - 7),
-                        IM_COL32(255, 255, 255, 220), 3.0f);
-            dl->AddLine(ImVec2(winPos.x + arrowEndX - 10, winPos.y + arrowY),
-                        ImVec2(winPos.x + arrowEndX - 2, winPos.y + arrowY + 7),
-                        IM_COL32(255, 255, 255, 220), 3.0f);
+            ImU32 arrowColor = IM_COL32(255, 255, 255, 220);
+            // Shaft
+            dl->AddLine(ImVec2(winPos.x + arrowX, winPos.y + arrowY),
+                        ImVec2(winPos.x + arrowX + arrowLen, winPos.y + arrowY),
+                        arrowColor, 4.0f);
+            // Head
+            dl->AddLine(ImVec2(winPos.x + arrowX + arrowLen, winPos.y + arrowY),
+                        ImVec2(winPos.x + arrowX + arrowLen - 9, winPos.y + arrowY - 8),
+                        arrowColor, 4.0f);
+            dl->AddLine(ImVec2(winPos.x + arrowX + arrowLen, winPos.y + arrowY),
+                        ImVec2(winPos.x + arrowX + arrowLen - 9, winPos.y + arrowY + 8),
+                        arrowColor, 4.0f);
 
+            // Progress ring around arrow center
             if (m_furnace.isSmelting) {
-                float cx = winPos.x + (arrowStartX + arrowEndX) * 0.5f;
+                float cx = winPos.x + arrowX + arrowLen * 0.5f;
                 float cy = winPos.y + arrowY;
                 float r = 20.0f;
                 float pi = 3.14159265f;
@@ -1215,11 +1220,11 @@ void Player::draw(RenderMaster& master, const Camera* camera)
 
             // 标题
             {
-                m_hudText.setFontSize(20.0f);
+                m_craftTitleText.setFontSize(20.0f);
                 std::string title = "工 作 台";
-                int tw = m_hudText.measureTextWidth(title) + 12;
+                int tw = m_craftTitleText.measureTextWidth(title) + 12;
                 int th = (int)(20.0f * 1.1f) + 4;
-                GLuint tid = m_hudText.update({title}, tw, th, true);
+                GLuint tid = m_craftTitleText.update({title}, tw, th, true);
                 if (tid) {
                     float tx = winPos.x + (craftContentW - tw) * 0.5f;
                     float ty = winPos.y + 2.0f;
@@ -1357,11 +1362,11 @@ void Player::draw(RenderMaster& master, const Camera* camera)
         {
             // 标题
             {
-                m_furnaceText.setFontSize(20.0f);
+                m_bpTitleText.setFontSize(20.0f);
                 std::string title = "背 包";
-                int tw = m_furnaceText.measureTextWidth(title) + 12;
+                int tw = m_bpTitleText.measureTextWidth(title) + 12;
                 int th = (int)(20.0f * 1.1f) + 4;
-                GLuint tid = m_furnaceText.update({title}, tw, th, true);
+                GLuint tid = m_bpTitleText.update({title}, tw, th, true);
                 if (tid) {
                     ImVec2 winPos = ImGui::GetWindowPos();
                     float tx = winPos.x + (hotbarW - tw) * 0.5f;
@@ -1980,16 +1985,19 @@ int Player::getAttackPower() const
 void Player::updateEating(float dt, bool rightHeld)
 {
     const auto& heldMat = m_items[m_heldItem].getMaterial();
-    if (heldMat.id != Material::ID::WildFruit) {
+    bool isFood = (heldMat.id == Material::ID::WildFruit || heldMat.id == Material::ID::CookedMeat);
+    if (!isFood) {
         m_eatProgress = 0.0f;
         m_isEating = false;
         return;
     }
+    float eatTime = (heldMat.id == Material::ID::CookedMeat) ? 1.5f : 1.0f;
+    int healAmt  = (heldMat.id == Material::ID::CookedMeat) ? 5 : 1;
     if (rightHeld) {
         m_isEating = true;
         m_eatProgress += dt;
-        if (m_eatProgress >= 1.0f) {
-            m_hp = std::min(m_hp + 1, m_maxHp);
+        if (m_eatProgress >= eatTime) {
+            m_hp = std::min(m_hp + healAmt, m_maxHp);
             m_items[m_heldItem].remove();
             m_eatProgress = 0.0f;
             m_isEating = false;

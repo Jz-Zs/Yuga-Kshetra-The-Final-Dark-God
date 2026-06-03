@@ -172,7 +172,11 @@ class Player : public Entity {
     BitmapText m_hudText;          // Chinese text for timer + settlement screen
     BitmapText m_buttonText;       // Chinese text for settlement button
     BitmapText m_discardText;      // Chinese text for discard confirmation popup
-    BitmapText m_furnaceText;      // Chinese text for furnace UI title/button
+    BitmapText m_furnaceText;      // Chinese text for furnace UI title
+    BitmapText m_craftTitleText;   // Chinese text for crafting window title
+    BitmapText m_bpTitleText;      // Chinese text for backpack window title
+    BitmapText m_furnaceQtyText;   // Quantity overlay for furnace slots
+    BitmapText m_furnaceCloseText; // Chinese text for furnace close button
 
     std::vector<ItemDropEntity>* m_pDropItems = nullptr;
 };
