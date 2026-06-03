@@ -1,6 +1,8 @@
 #include <print>
 
 #include <windows.h>
+#include <imm.h>
+#pragma comment(lib, "imm32.lib")
 
 #include <SFML/Window/VideoMode.hpp>
 #include <SFML/Window/Window.hpp>
@@ -62,6 +64,8 @@ int main()
         window.create(winMode, "MineCraft Week", sf::State::Windowed, context_settings);
     }
 
+    // Disable IME so keyboard input goes directly to game (Chinese IME fix)
+    ImmAssociateContext(window.getNativeHandle(), nullptr);
     window.setVerticalSyncEnabled(true);
     if (!window.setActive(true))
     {
