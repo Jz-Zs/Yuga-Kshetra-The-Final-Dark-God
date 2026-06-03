@@ -18,14 +18,14 @@ struct PigmanEntity {
     glm::vec3 rotation{0, 0, 0};
     AABB box{glm::vec3(0.4f, 1.0f, 0.4f)};
 
-    int hp = 30;
-    int maxHp = 30;
-    float moveSpeed = 4.0f;
+    int hp = 40;
+    int maxHp = 40;
+    float moveSpeed = 4.5f;
 
     enum State { Patrol, Chase, Attack, Hurt, Dead };
     State state = Patrol;
     float stateTimer = 0.0f;
-    float attackCooldown = 1.5f;
+    float attackCooldown = 1.0f;
     float hurtTimer = 0.0f;
     float stuckTimer = 0.0f;
     glm::vec3 stuckPosition{0, 0, 0};

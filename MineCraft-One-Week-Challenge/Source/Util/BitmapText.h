@@ -13,7 +13,8 @@ class BitmapText {
     ~BitmapText();
 
     GLuint update(const std::vector<std::string>& lines,
-                  int texWidth, int texHeight, bool center = false);
+                  int texWidth, int texHeight, bool center = false,
+                  unsigned char r = 255, unsigned char g = 255, unsigned char b = 255);
 
     void setFontSize(float size) { m_fontSize = size; }
     int measureTextWidth(const std::string& text);
@@ -27,5 +28,6 @@ class BitmapText {
     float m_fontSize = 24.0f;
 
     int renderUTF8(unsigned char* buf, int bufW, int bufH,
-                   int x, int y, const std::string& text);
+                   int x, int y, const std::string& text,
+                   unsigned char r = 255, unsigned char g = 255, unsigned char b = 255);
 };

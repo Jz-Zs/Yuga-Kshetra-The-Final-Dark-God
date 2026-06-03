@@ -99,6 +99,25 @@ bool Player::hasFurnace() const
 
 void Player::onFurnaceMined()
 {
+    // Drop furnace contents as individual items (one per stack count)
+    if (m_pDropItems) {
+        glm::vec3 pos(m_furnacePos.x + 0.5f, m_furnacePos.y + 0.5f, m_furnacePos.z + 0.5f);
+        auto dropStack = [&](const ItemStack& s) {
+            int n = s.getNumInStack();
+            if (s.getMaterial().id == Material::ID::Nothing || n <= 0) return;
+            for (int i = 0; i < n; i++) {
+                ItemDropEntity d;
+                d.position = pos;
+                d.velocity = glm::vec3(0, 0, 0);
+                d.material = &s.getMaterial();
+                d.alive = true;
+                m_pDropItems->push_back(d);
+            }
+        };
+        dropStack(m_furnace.input);
+        dropStack(m_furnace.fuel);
+        dropStack(m_furnace.output);
+    }
     m_furnacePos = {-1, -1, -1};
     m_furnaceUIOpen = false;
     m_furnace = FurnaceState{};
@@ -170,6 +189,9 @@ void Player::update(float dt, World& world)
 {
     velocity += m_acceleration;
     m_acceleration = {0, 0, 0};
+
+    if (m_slowTimer > 0.0f)
+        m_slowTimer -= dt;
 
     if (!m_isFlying)
     {
@@ -284,15 +306,19 @@ void Player::collide(World& world, const glm::vec3& vel, float dt)
 }
 
 ///@TODO Move this
-float speed = 0.2f;
+float speed = 0.263f;
 
 void Player::keyboardInput(const Keyboard& keyboard)
 {
+    float currentSpeed = speed;
+    if (m_slowTimer > 0.0f)
+        currentSpeed *= m_slowFactor;
+
     if (keyboard.isKeyDown(sf::Keyboard::Key::W))
     {
-        float s = speed;
+        float s = currentSpeed;
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LControl))
-            s *= 5;
+            s *= 4;
         else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::RShift) ||
                  sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LShift))
             s *= 0.35f;
@@ -301,18 +327,18 @@ void Player::keyboardInput(const Keyboard& keyboard)
     }
     if (keyboard.isKeyDown(sf::Keyboard::Key::S))
     {
-        m_acceleration.x += glm::cos(glm::radians(rotation.y + 90)) * speed;
-        m_acceleration.z += glm::sin(glm::radians(rotation.y + 90)) * speed;
+        m_acceleration.x += glm::cos(glm::radians(rotation.y + 90)) * currentSpeed;
+        m_acceleration.z += glm::sin(glm::radians(rotation.y + 90)) * currentSpeed;
     }
     if (keyboard.isKeyDown(sf::Keyboard::Key::A))
     {
-        m_acceleration.x += -glm::cos(glm::radians(rotation.y)) * speed;
-        m_acceleration.z += -glm::sin(glm::radians(rotation.y)) * speed;
+        m_acceleration.x += -glm::cos(glm::radians(rotation.y)) * currentSpeed;
+        m_acceleration.z += -glm::sin(glm::radians(rotation.y)) * currentSpeed;
     }
     if (keyboard.isKeyDown(sf::Keyboard::Key::D))
     {
-        m_acceleration.x += glm::cos(glm::radians(rotation.y)) * speed;
-        m_acceleration.z += glm::sin(glm::radians(rotation.y)) * speed;
+        m_acceleration.x += glm::cos(glm::radians(rotation.y)) * currentSpeed;
+        m_acceleration.z += glm::sin(glm::radians(rotation.y)) * currentSpeed;
     }
 
     if (keyboard.isKeyDown(sf::Keyboard::Key::Space))
@@ -321,7 +347,7 @@ void Player::keyboardInput(const Keyboard& keyboard)
     }
     else if (keyboard.isKeyDown(sf::Keyboard::Key::LShift) && m_isFlying)
     {
-        m_acceleration.y -= speed * 3;
+        m_acceleration.y -= currentSpeed * 3;
     }
 }
 
@@ -459,7 +485,10 @@ void Player::drawTimer()
     int texH = 4 + lineH * 2 + 4;
 
     std::vector<std::string> lines = { roundBuf, timeBuf };
-    GLuint texId = m_hudText.update(lines, texW, texH, true);
+    unsigned char r = m_difficultyActive ? 255 : 255;
+    unsigned char g = m_difficultyActive ? 165 : 255;
+    unsigned char b = m_difficultyActive ? 0 : 255;
+    GLuint texId = m_hudText.update(lines, texW, texH, true, r, g, b);
 
     const float pad = 4.0f;
     const float winW = (float)texW + pad * 2;
@@ -894,6 +923,8 @@ void Player::drawSettlement(const Camera* camera)
             case Material::ID::IronSword:     return "铁剑";
             case Material::ID::CookedMeat:  return "熟肉";
             case Material::ID::Furnace:     return "熔炉";
+            case Material::ID::Silk:        return "蛛丝";
+            case Material::ID::SilkThread:  return "丝线";
             default: return "未知";
         }
     };
@@ -1073,6 +1104,8 @@ void Player::draw(RenderMaster& master, const Camera* camera)
             case Material::ID::IronSword:     return "铁剑";
             case Material::ID::CookedMeat:  return "熟肉";
             case Material::ID::Furnace:     return "熔炉";
+            case Material::ID::Silk:        return "蛛丝";
+            case Material::ID::SilkThread:  return "丝线";
             default: return "未知";
         }
     };
@@ -1110,6 +1143,22 @@ void Player::draw(RenderMaster& master, const Camera* camera)
         if (n > 1) {
             qtySlotMap[i] = (int)qtyLines.size();
             qtyLines.push_back(std::to_string(n));
+        }
+    }
+    // Crafting grid + result quantities (same batch, shared m_bitmapText)
+    int craftQtyMap[10]; // 0-8 = grid, 9 = result
+    std::memset(craftQtyMap, -1, sizeof(craftQtyMap));
+    if (m_backpackOpen) {
+        for (int i = 0; i < 9; i++) {
+            int n = m_craftGrid[i].getNumInStack();
+            if (n > 1) {
+                craftQtyMap[i] = (int)qtyLines.size();
+                qtyLines.push_back(std::to_string(n));
+            }
+        }
+        if (m_currentRecipe && m_currentRecipe->outputCount > 1) {
+            craftQtyMap[9] = (int)qtyLines.size();
+            qtyLines.push_back(std::to_string(m_currentRecipe->outputCount));
         }
     }
     if (!qtyLines.empty()) {
@@ -1258,11 +1307,17 @@ void Player::draw(RenderMaster& master, const Camera* camera)
                             ImVec2(p0.x + texPad, p0.y + texPad),
                             ImVec2(p1.x - texPad, p1.y - texPad),
                             ImVec2(uv[2], uv[5]), ImVec2(uv[0], uv[3]));
-                        int n = m_craftGrid[slotIdx].getNumInStack();
-                        if (n > 1) {
-                            char buf[8];
-                            snprintf(buf, 8, "%d", n);
-                            wdl->AddText(ImVec2(p1.x - 16, p1.y - 16), IM_COL32(255,255,255,255), buf);
+                        int lineIdx = craftQtyMap[slotIdx];
+                        if (lineIdx >= 0 && qtyTexId) {
+                            float lineY = 4.0f + lineIdx * 26.4f;
+                            float glyphH = 26.0f;
+                            float mw = (float)m_bitmapText.measureTextWidth(qtyLines[lineIdx]) + 8.0f;
+                            ImVec2 uv0(0.08f, lineY / qtyTexH);
+                            ImVec2 uv1((4.0f + mw) / qtyTexW, (lineY + glyphH) / qtyTexH);
+                            float qH = 20.0f, qW = mw * (qH / glyphH);
+                            wdl->AddImage((ImTextureID)(intptr_t)qtyTexId,
+                                ImVec2(p1.x - qW - 1.0f, p1.y - qH),
+                                ImVec2(p1.x - 1.0f, p1.y), uv0, uv1);
                         }
                     }
 
@@ -1336,6 +1391,19 @@ void Player::draw(RenderMaster& master, const Camera* camera)
                         ImVec2(rp0.x + texPad, rp0.y + texPad),
                         ImVec2(rp1.x - texPad, rp1.y - texPad),
                         ImVec2(uv[2], uv[5]), ImVec2(uv[0], uv[3]));
+                    // Quantity overlay for result
+                    int rLineIdx = craftQtyMap[9];
+                    if (rLineIdx >= 0 && qtyTexId) {
+                        float rLineY = 4.0f + rLineIdx * 26.4f;
+                        float rGlyphH = 26.0f;
+                        float rMw = (float)m_bitmapText.measureTextWidth(qtyLines[rLineIdx]) + 8.0f;
+                        ImVec2 rUV0(0.08f, rLineY / qtyTexH);
+                        ImVec2 rUV1((4.0f + rMw) / qtyTexW, (rLineY + rGlyphH) / qtyTexH);
+                        float rqH = 20.0f, rqW = rMw * (rqH / rGlyphH);
+                        wdl->AddImage((ImTextureID)(intptr_t)qtyTexId,
+                            ImVec2(rp1.x - rqW - 1.0f, rp1.y - rqH),
+                            ImVec2(rp1.x - 1.0f, rp1.y), rUV0, rUV1);
+                    }
                 }
                 if (m_currentRecipe && ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
                     const Material& outMat = *m_currentRecipe->output;

@@ -13,6 +13,8 @@
 
 #include "../Entity/ItemDropEntity.h"
 #include "../Entity/PigmanEntity.h"
+#include "../Entity/SpiderEntity.h"
+#include "../Entity/SpiderProjectile.h"
 
 #include "Event/IWorldEvent.h"
 
@@ -48,6 +50,12 @@ class World : public NonCopyable {
     void updateEntities(float dt, Player& player);
     std::vector<PigmanEntity>& getPigmen() { return m_pigmen; }
 
+    void spawnSpider(const Player& player);
+    std::vector<SpiderEntity>& getSpiders() { return m_spiders; }
+    std::vector<SpiderProjectile>& getProjectiles() { return m_projectiles; }
+    float getDifficultyMultiplier() const { return m_difficultyMultiplier; }
+    bool isDifficultyActive() const { return m_difficultyTriggered; }
+
     bool isExtractionActive() const { return m_extractionActive; }
     const glm::ivec3& getExtractionCenter() const { return m_extractionCenter; }
 
@@ -75,6 +83,10 @@ class World : public NonCopyable {
     std::vector<std::unique_ptr<IWorldEvent>> m_events;
     std::vector<ItemDropEntity> m_dropItems;
     std::vector<PigmanEntity> m_pigmen;
+    std::vector<SpiderEntity> m_spiders;
+    std::vector<SpiderProjectile> m_projectiles;
+    float m_difficultyMultiplier = 1.0f;
+    bool m_difficultyTriggered = false;
     std::unordered_map<sf::Vector3i, ChunkSection *> m_chunkUpdates;
 
     std::atomic<bool> m_isRunning{true};

@@ -1,5 +1,3 @@
-// Generate tinygltf implementation in this translation unit only
-// Must be defined BEFORE EntityRenderer.h includes tiny_gltf.h
 #define TINYGLTF_USE_CPP14
 #define TINYGLTF_NO_STB_IMAGE
 #define TINYGLTF_IMPLEMENTATION
@@ -12,15 +10,14 @@
 #include <cmath>
 #include <glm/gtc/quaternion.hpp>
 
-EntityRenderer::EntityRenderer()
+EntityRenderer::EntityRenderer(const std::string& modelPath, const std::string& textureName)
     : m_shader("Basic", "Basic")
 {
-    if (!loadGltf("Res/Models/Zoglin/minecraft_-zoglin/scene.gltf")) {
-        std::cerr << "EntityRenderer: failed to load Zoglin model\n";
+    if (!loadGltf(modelPath.c_str())) {
+        std::cerr << "EntityRenderer: failed to load model: " << modelPath << "\n";
     }
-    m_texture.loadFromFile("zoglin");
+    m_texture.loadFromFile(textureName);
 
-    // Cache the tintColor uniform location
     m_shader.useProgram();
     m_tintLocation = glGetUniformLocation(m_shader.getID(), "tintColor");
 }
@@ -34,7 +31,6 @@ EntityRenderer::~EntityRenderer()
 bool EntityRenderer::loadGltf(const char* path)
 {
     tinygltf::TinyGLTF loader;
-    // Provide no-op image loader — we load textures manually via BasicTexture
     loader.SetImageLoader(
         [](tinygltf::Image*, const int, std::string*, std::string*,
            int, int, const unsigned char*, int, void*) { return true; },
@@ -47,6 +43,7 @@ bool EntityRenderer::loadGltf(const char* path)
 
     buildParentMap(m_gltfModel);
     buildMeshParts(m_gltfModel);
+    identifyJointNodes();
     return !m_meshParts.empty();
 }
 
@@ -77,7 +74,6 @@ void EntityRenderer::buildMeshParts(tinygltf::Model& gltf)
             auto& posBuf = gltf.buffers[posView.buffer];
             const float* posData = reinterpret_cast<const float*>(
                 posBuf.data.data() + posView.byteOffset + posAcc.byteOffset);
-
             std::vector<GLfloat> posVerts(posData, posData + posAcc.count * 3);
 
             std::vector<GLfloat> uvVerts;
@@ -116,7 +112,7 @@ void EntityRenderer::buildMeshParts(tinygltf::Model& gltf)
             mesh.indices = std::move(indices);
 
             Model* model = new Model();
-            model->addData(mesh); // addData() already calls genVAO() internally
+            model->addData(mesh);
 
             GltfMeshPart part;
             part.model = model;
@@ -126,13 +122,26 @@ void EntityRenderer::buildMeshParts(tinygltf::Model& gltf)
     }
 }
 
+void EntityRenderer::identifyJointNodes()
+{
+    // Only leaf mesh nodes (no children) under "bone" group parents with rotation data
+    for (size_t i = 0; i < m_gltfModel.nodes.size(); i++) {
+        int p = m_parentMap[i];
+        if (p < 0) continue;
+        auto& parent = m_gltfModel.nodes[p];
+        auto& node = m_gltfModel.nodes[i];
+        bool hasBoneParent = (parent.name.find("bone") != std::string::npos);
+        bool isLeaf = node.children.empty() && node.mesh >= 0;
+        if (hasBoneParent && isLeaf && !node.rotation.empty()) {
+            m_jointNodes.insert((int)i);
+        }
+    }
+}
+
 glm::mat4 EntityRenderer::getNodeWorldTransform(int nodeIdx, float animTime)
 {
-    // Walk from node to root, building the transform chain
-    // Root nodes have parent -1
     glm::mat4 result(1.0f);
 
-    // Collect nodes from leaf to root
     std::vector<int> chain;
     int cur = nodeIdx;
     while (cur >= 0) {
@@ -140,11 +149,9 @@ glm::mat4 EntityRenderer::getNodeWorldTransform(int nodeIdx, float animTime)
         cur = m_parentMap[cur];
     }
 
-    // Apply from root to leaf
     for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
         int n = *it;
         auto& node = m_gltfModel.nodes[n];
-
         glm::mat4 local(1.0f);
 
         if (!node.matrix.empty()) {
@@ -168,7 +175,15 @@ glm::mat4 EntityRenderer::getNodeWorldTransform(int nodeIdx, float animTime)
                               (float)node.scale[2]));
         }
 
-        // Check for animation targeting this node
+        // Procedural leg swing for joint nodes (spider legs etc.)
+        if (animTime > 0.0f && m_jointNodes.count(n)) {
+            float speed = 12.0f;
+            float amplitude = 0.0f;
+            float phase = (float)n * 1.7f;
+            float angle = std::sin(animTime * speed + phase) * amplitude;
+            local *= glm::mat4_cast(glm::angleAxis(angle, glm::vec3(1, 0, 0)));
+        }
+
         for (auto& anim : m_gltfModel.animations) {
             for (auto& ch : anim.channels) {
                 if (ch.target_node != n) continue;
@@ -216,9 +231,9 @@ glm::mat4 EntityRenderer::getNodeWorldTransform(int nodeIdx, float animTime)
     return result;
 }
 
-void EntityRenderer::addEntity(const PigmanEntity& e)
+void EntityRenderer::addEntity(const EntityRenderData& e)
 {
-    m_entities.push_back(&e);
+    m_entities.push_back(e);
 }
 
 void EntityRenderer::render(const Camera& camera)
@@ -229,21 +244,19 @@ void EntityRenderer::render(const Camera& camera)
     m_shader.loadProjectionViewMatrix(camera.getProjectionViewMatrix());
     m_texture.bindTexture();
 
-    for (const auto* e : m_entities) {
-        if (e->state == PigmanEntity::Dead && e->deathAnimTimer > 1.0f) continue;
+    for (const auto& e : m_entities) {
+        if (e.state == 4 && e.deathAnimTimer > 1.0f) continue;
 
-        // Base world transform
         glm::mat4 worldMat(1.0f);
-        worldMat = glm::translate(worldMat, e->position);
-        worldMat = glm::rotate(worldMat, glm::radians(e->rotation.y + 180.0f),
+        worldMat = glm::translate(worldMat, e.position);
+        worldMat = glm::rotate(worldMat, glm::radians(e.rotation.y + e.rotationYOffset),
                                glm::vec3(0, 1, 0));
-        worldMat = glm::scale(worldMat, glm::vec3(0.6f)); // Zoglin ~2 units → ~1.2 blocks tall
+        worldMat = glm::scale(worldMat, glm::vec3(e.scale));
 
-        // Programmatic animation layers
         glm::mat4 animMat(1.0f);
 
-        if (e->state == PigmanEntity::Attack) {
-            float phase = 1.0f - (e->attackCooldown / 1.5f);
+        if (e.state == 2) { // Attack
+            float phase = 1.0f - (e.attackCooldown / 1.5f);
             if (phase < 0.3f) {
                 float t = phase / 0.3f;
                 float lunge = std::sin(t * 3.14159265f) * 0.3f;
@@ -253,8 +266,8 @@ void EntityRenderer::render(const Camera& camera)
                                       glm::vec3(1, 0, 0));
             }
         }
-        else if (e->state == PigmanEntity::Dead) {
-            float t = e->deathAnimTimer;
+        else if (e.state == 4) { // Dead
+            float t = e.deathAnimTimer;
             if (t > 1.0f) t = 1.0f;
             animMat = glm::rotate(animMat, glm::radians(t * 90.0f),
                                   glm::vec3(0, 0, 1));
@@ -262,18 +275,15 @@ void EntityRenderer::render(const Camera& camera)
             animMat = glm::scale(animMat, glm::vec3(s, s, s));
         }
 
-        // Tint: white for hurt, normal otherwise
         if (m_tintLocation >= 0) {
-            if (e->state == PigmanEntity::Hurt) {
-                glUniform3f(m_tintLocation, 3.0f, 3.0f, 3.0f);
-            } else {
+            if (e.isHurt)
+                glUniform3f(m_tintLocation, 8.0f, 8.0f, 8.0f);
+            else
                 glUniform3f(m_tintLocation, 1.0f, 1.0f, 1.0f);
-            }
         }
 
-        float animTime = e->stateTimer; // animate during patrol and chase
+        float animTime = e.animTimer;
 
-        // Render each mesh part with full hierarchy transform
         for (auto& part : m_meshParts) {
             glm::mat4 nodeMat = getNodeWorldTransform(part.nodeIndex, animTime);
             glm::mat4 finalMat = worldMat * animMat * nodeMat;

@@ -94,12 +94,18 @@ class Player : public Entity {
     int m_hp = 100;
     int m_maxHp = 100;
     int m_baseAttack = 2;
+    // Slow debuff (spider web)
+    float m_slowTimer = 0.0f;
+    float m_slowFactor = 1.0f;  // 1.0=normal, 0.8=slowed
     int getAttackPower() const;
     void takeDamage(int amount, glm::vec3 knockbackDir);
 
     // Death
     bool m_isDead = false;
     float m_deathTimer = 0.0f;
+
+    // Dynamic difficulty
+    bool m_difficultyActive = false;
 
     // HUD data (Entry 5 renders, Entry 6 fills)
     int m_roundNumber = 1;

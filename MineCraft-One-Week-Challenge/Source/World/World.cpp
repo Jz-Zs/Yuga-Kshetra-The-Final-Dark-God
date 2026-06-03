@@ -1,5 +1,6 @@
 #include "World.h"
 #include "../Entity/PigmanAI.h"
+#include "../Entity/SpiderAI.h"
 
 #include <algorithm>
 #include <future>
@@ -40,6 +41,10 @@ void World::resetWorld(const Camera &camera, Player &player)
     // 1. Clear entities
     m_dropItems.clear();
     m_pigmen.clear();
+    m_spiders.clear();
+    m_projectiles.clear();
+    m_difficultyTriggered = false;
+    m_difficultyMultiplier = 1.0f;
     m_events.clear();
 
     // 2. Delete GPU meshes and erase all chunks
@@ -398,7 +403,7 @@ std::vector<ItemDropEntity>& World::getDropItems()
 void World::spawnPigman(const Player& player, float minDist)
 {
     PigmanEntity e;
-    glm::vec3 spawnPos;
+    glm::vec3 spawnPos{};
     bool found = false;
 
     for (int tries = 0; tries < 50; tries++) {
@@ -447,10 +452,68 @@ void World::spawnPigman(const Player& player, float minDist)
     m_pigmen.push_back(e);
 }
 
+void World::spawnSpider(const Player& player)
+{
+    SpiderEntity e;
+    glm::vec3 spawnPos{};
+    bool found = false;
+
+    for (int tries = 0; tries < 50; tries++) {
+        float x = (float)(std::rand() % (MVP_WORLD_SIZE_X - 20) + 10);
+        float z = (float)(std::rand() % (MVP_WORLD_SIZE_Z - 20) + 10);
+
+        if (glm::distance(glm::vec2(x, z),
+                          glm::vec2(player.position.x, player.position.z)) < 20.0f)
+            continue;
+
+        int gx = (int)x, gz = (int)z;
+        int gy = -1;
+        for (int y = MVP_WORLD_HEIGHT - 1; y > 0; y--) {
+            auto block = getBlock(gx, y, gz);
+            bool isLeaf = (block.id == (int)BlockId::OakLeaf);
+            if (block.id != 0 && block.getData().isCollidable && !isLeaf) {
+                gy = y + 1;
+                break;
+            }
+        }
+        if (gy < 0) continue;
+
+        bool blocked = false;
+        for (int dy = 0; dy <= 2 && !blocked; dy++)
+            for (int dx = -1; dx <= 1 && !blocked; dx++)
+                for (int dz = -1; dz <= 1 && !blocked; dz++) {
+                    auto b = getBlock(gx + dx, gy + dy, gz + dz);
+                    if (b.id != 0 && b.getData().isCollidable) blocked = true;
+                }
+        if (blocked) continue;
+
+        spawnPos = glm::vec3(x + 0.5f, (float)gy, z + 0.5f);
+        found = true;
+        break;
+    }
+
+    if (!found) return;
+
+    e.position = spawnPos;
+    e.patrolOrigin = spawnPos;
+    e.stuckPosition = spawnPos;
+    e.box.update(e.position);
+    m_spiders.push_back(e);
+}
+
 void World::updateEntities(float dt, Player& player)
 {
-    // Lazy initial spawn — fill to 8 pigmen as chunks become available
-    if (m_pigmen.size() < 8) {
+    float elapsed = 600.0f - player.m_roundTimeLeft;
+
+    // Dynamic Difficulty trigger at 6:00
+    if (!m_difficultyTriggered && elapsed >= 360.0f) {
+        m_difficultyTriggered = true;
+        m_difficultyMultiplier = 1.1f;
+    }
+
+    // Lazy initial spawn — fill pigmen as chunks become available
+    int pigmanMax = (m_difficultyMultiplier > 1.05f) ? 9 : 8;
+    if (m_pigmen.size() < (size_t)pigmanMax) {
         spawnPigman(player, 15.0f);
     }
     for (auto& e : m_pigmen) {
@@ -459,7 +522,7 @@ void World::updateEntities(float dt, Player& player)
             e.respawnTimer -= dt;
             if (e.respawnTimer <= 0.0f) {
                 // Respawn: find new position far from player
-                glm::vec3 spawnPos;
+                glm::vec3 spawnPos{};
                 bool found = false;
                 for (int tries = 0; tries < 50; tries++) {
                     float x = (float)(std::rand() % (MVP_WORLD_SIZE_X - 20) + 10);
@@ -489,12 +552,12 @@ void World::updateEntities(float dt, Player& player)
                     e.position = spawnPos;
                     e.velocity = glm::vec3(0, 0, 0);
                     e.rotation = glm::vec3(0, 0, 0);
-                    e.hp = 30;
-                    e.maxHp = 30;
-                    e.moveSpeed = 4.0f;
+                    e.hp = 40;
+                    e.maxHp = 40;
+                    e.moveSpeed = 4.5f;
                     e.state = PigmanEntity::Patrol;
                     e.stateTimer = 0.0f;
-                    e.attackCooldown = 1.5f;
+                    e.attackCooldown = 1.0f;
                     e.hurtTimer = 0.0f;
                     e.stuckTimer = 0.0f;
                     e.stuckPosition = spawnPos;
@@ -593,8 +656,8 @@ void World::updateEntities(float dt, Player& player)
                 knockDir.y = 0;
                 if (glm::length(knockDir) < 0.01f)
                     knockDir = glm::vec3(0, 0, -1);
-                player.takeDamage(5, knockDir);
-                e.attackCooldown = 1.5f;
+                player.takeDamage((int)(5 * m_difficultyMultiplier), knockDir);
+                e.attackCooldown = 1.0f;
             }
         }
 
@@ -605,4 +668,210 @@ void World::updateEntities(float dt, Player& player)
         if (e.position.z >= MVP_WORLD_SIZE_Z) e.position.z = MVP_WORLD_SIZE_Z - 1;
         if (e.position.y < 0) e.position.y = 1;
     }
+
+    // --- Staged spider spawning ---
+    int baseSpiderMax = 0;
+    if (elapsed >= 60.0f) {
+        baseSpiderMax = std::min(5, (int)(elapsed / 60.0f));
+    }
+    int spiderMax = baseSpiderMax + (m_difficultyMultiplier > 1.05f ? 1 : 0);
+    if ((int)m_spiders.size() < spiderMax) {
+        spawnSpider(player);
+    }
+
+    // --- Spider updates ---
+    for (auto& e : m_spiders) {
+        if (e.state == SpiderEntity::Dead) {
+            e.deathAnimTimer += dt;
+            e.respawnTimer -= dt;
+            if (e.respawnTimer <= 0.0f) {
+                glm::vec3 spawnPos{};
+                bool found = false;
+                for (int tries = 0; tries < 50; tries++) {
+                    float x = (float)(std::rand() % (MVP_WORLD_SIZE_X - 30) + 15);
+                    float z = (float)(std::rand() % (MVP_WORLD_SIZE_Z - 30) + 15);
+                    if (glm::distance(glm::vec2(x, z),
+                        glm::vec2(player.position.x, player.position.z)) < 20.0f) continue;
+                    int gy = -1;
+                    for (int y = MVP_WORLD_HEIGHT - 1; y > 0; y--) {
+                        auto b = getBlock((int)x, y, (int)z);
+                        if (b.id != 0 && b.getData().isCollidable) { gy = y + 1; break; }
+                    }
+                    if (gy < 0) continue;
+                    bool blocked = false;
+                    for (int dy = 0; dy <= 2; dy++) {
+                        auto b = getBlock((int)x, gy + dy, (int)z);
+                        if (b.id != 0 && b.getData().isCollidable) { blocked = true; break; }
+                    }
+                    if (blocked) continue;
+                    spawnPos = glm::vec3(x + 0.5f, (float)gy, z + 0.5f);
+                    found = true; break;
+                }
+                if (found) {
+                    e.position = spawnPos;
+                    e.velocity = glm::vec3(0, 0, 0);
+                    e.rotation = glm::vec3(0, 0, 0);
+                    e.hp = 80;
+                    e.state = SpiderEntity::Patrol;
+                    e.stateTimer = 0.0f;
+                    e.meleeCooldown = 1.5f;
+                    e.rangedCooldown = 2.5f;
+                    e.freezeTimer = 0.0f;
+                    e.hurtTimer = 0.0f;
+                    e.stuckTimer = 0.0f;
+                    e.stuckPosition = spawnPos;
+                    e.patrolOrigin = spawnPos;
+                    e.respawnTimer = -1.0f;
+                    e.path.clear();
+                    e.pathIndex = 0;
+                    e.deathAnimTimer = 0.0f;
+                    e.box.update(e.position);
+                } else {
+                    e.respawnTimer = 5.0f;
+                }
+            }
+            continue;
+        }
+
+        // Run AI
+        SpiderAI::update(e, dt, player, *this);
+
+        // Ranged attack: fire projectile in Chase state when cooldown just set
+        if (e.state == SpiderEntity::Chase && e.rangedCooldown > 1.99f && e.rangedCooldown <= 2.0f) {
+            SpiderProjectile proj;
+            proj.position = e.position + glm::vec3(0, 0.75f, 0);
+            glm::vec3 dir = player.position - e.position;
+            dir.y = 0;
+            if (glm::length(dir) > 0.01f) {
+                dir = glm::normalize(dir);
+                proj.velocity = dir * 5.0f;
+            } else {
+                proj.velocity = glm::vec3(0, 0, -4.0f);
+            }
+            proj.damage = (int)(5 * m_difficultyMultiplier);
+            proj.alive = true;
+            proj.lifetime = 0.0f;
+            proj.maxLifetime = 2.0f;
+            m_projectiles.push_back(proj);
+        }
+
+        // Gravity
+        int bx = (int)e.position.x;
+        int by = (int)(e.position.y - 0.125f);
+        int bz = (int)e.position.z;
+        auto below = getBlock(bx, by, bz);
+        bool onSolidGround = (below.id != 0 && below.getData().isCollidable
+                              && below.id != (int)BlockId::OakLeaf);
+        if (onSolidGround) {
+            float newY = (float)by + 1.0f + 0.125f;
+            int newBy = (int)newY;
+            auto atBody = getBlock(bx, newBy, bz);
+            auto atHead = getBlock(bx, newBy + 1, bz);
+            bool bodyBlocked = (atBody.id != 0 && atBody.getData().isCollidable);
+            bool headBlocked = (atHead.id != 0 && atHead.getData().isCollidable);
+            if (newY > e.position.y + 1.0f || bodyBlocked || headBlocked)
+                newY = e.position.y;
+            e.position.y = newY;
+            e.velocity.y = 0;
+        } else {
+            e.velocity.y -= 40.0f * dt;
+        }
+
+        // Apply velocity
+        e.position.x += e.velocity.x * dt;
+        e.position.y += e.velocity.y * dt;
+        e.position.z += e.velocity.z * dt;
+
+        // Block collision (same pattern as pigman)
+        for (int cx = (int)(e.position.x - e.box.dimensions.x);
+             cx <= (int)(e.position.x + e.box.dimensions.x); cx++)
+        for (int cy = (int)(e.position.y - e.box.dimensions.y);
+             cy <= (int)(e.position.y + e.box.dimensions.y); cy++)
+        for (int cz = (int)(e.position.z - e.box.dimensions.z);
+             cz <= (int)(e.position.z + e.box.dimensions.z); cz++) {
+            auto block = getBlock(cx, cy, cz);
+            if (block.id == 0 || !block.getData().isCollidable) continue;
+            bool isGround = (cy <= (int)(e.position.y - e.box.dimensions.y + 0.01f));
+            if (e.velocity.y < -1.0f) continue;
+            if (!isGround) {
+                float rEdge = e.position.x + e.box.dimensions.x;
+                float lEdge = e.position.x - e.box.dimensions.x;
+                if (e.velocity.x > 0 && rEdge > (float)cx && lEdge < (float)(cx + 1))
+                    { e.position.x = (float)cx - e.box.dimensions.x; e.velocity.x = 0; }
+                if (e.velocity.x < 0 && lEdge < (float)(cx + 1) && rEdge > (float)cx)
+                    { e.position.x = (float)(cx + 1) + e.box.dimensions.x; e.velocity.x = 0; }
+                float fEdge = e.position.z + e.box.dimensions.z;
+                float bEdge = e.position.z - e.box.dimensions.z;
+                if (e.velocity.z > 0 && fEdge > (float)cz && bEdge < (float)(cz + 1))
+                    { e.position.z = (float)cz - e.box.dimensions.z; e.velocity.z = 0; }
+                if (e.velocity.z < 0 && bEdge < (float)(cz + 1) && fEdge > (float)cz)
+                    { e.position.z = (float)(cz + 1) + e.box.dimensions.z; e.velocity.z = 0; }
+            }
+        }
+
+        e.box.update(e.position);
+
+        // Spider melee attack
+        if (e.state == SpiderEntity::MeleeAttack && e.meleeCooldown <= 0.0f) {
+            float d = glm::distance(
+                glm::vec3(e.position.x, 0, e.position.z),
+                glm::vec3(player.position.x, 0, player.position.z));
+            if (d < 2.0f) {
+                glm::vec3 knockDir = glm::normalize(player.position - e.position);
+                knockDir.y = 0;
+                if (glm::length(knockDir) < 0.01f) knockDir = glm::vec3(0, 0, -1);
+                player.takeDamage((int)(10 * m_difficultyMultiplier), knockDir);
+                e.meleeCooldown = 1.5f;
+            }
+        }
+
+        // Clamp to world bounds
+        if (e.position.x < 0) e.position.x = 0;
+        if (e.position.x >= MVP_WORLD_SIZE_X) e.position.x = MVP_WORLD_SIZE_X - 1;
+        if (e.position.z < 0) e.position.z = 0;
+        if (e.position.z >= MVP_WORLD_SIZE_Z) e.position.z = MVP_WORLD_SIZE_Z - 1;
+        if (e.position.y < 0) e.position.y = 1;
+    }
+
+    // --- Projectile updates ---
+    for (auto& p : m_projectiles) {
+        if (!p.alive) continue;
+        p.lifetime += dt;
+        if (p.lifetime > p.maxLifetime) {
+            p.alive = false;
+            continue;
+        }
+        p.position.x += p.velocity.x * dt;
+        p.position.y += p.velocity.y * dt;
+        p.position.z += p.velocity.z * dt;
+
+        // Block collision
+        int px = (int)p.position.x, py = (int)p.position.y, pz = (int)p.position.z;
+        auto block = getBlock(px, py, pz);
+        if (block.id != 0 && block.getData().isCollidable) {
+            p.alive = false;
+            continue;
+        }
+
+        // Player hit
+        glm::vec3 pMin = p.position - glm::vec3(0.25f);
+        glm::vec3 pMax = p.position + glm::vec3(0.25f);
+        glm::vec3 plMin = player.position - player.box.dimensions;
+        glm::vec3 plMax = player.position + player.box.dimensions;
+        if (pMin.x < plMax.x && pMax.x > plMin.x &&
+            pMin.y < plMax.y && pMax.y > plMin.y &&
+            pMin.z < plMax.z && pMax.z > plMin.z) {
+            glm::vec3 kb(0, 0, 0);
+            player.takeDamage(p.damage, kb);
+            player.m_slowTimer = 1.0f;
+            player.m_slowFactor = 0.8f;
+            p.alive = false;
+        }
+    }
+
+    // Cleanup dead projectiles
+    m_projectiles.erase(
+        std::remove_if(m_projectiles.begin(), m_projectiles.end(),
+            [](const SpiderProjectile& p) { return !p.alive; }),
+        m_projectiles.end());
 }

@@ -4,6 +4,12 @@
 #include <iostream>
 
 #include "../Application.h"
+
+RenderMaster::RenderMaster()
+    : m_pigmanRenderer("Res/Models/Zoglin/minecraft_-zoglin/scene.gltf", "zoglin")
+    , m_spiderRenderer("Res/Models/Spider/minecraft-spider/source/model.gltf", "spider")
+{
+}
 #include "../World/Chunk/ChunkMesh.h"
 #include "../World/Chunk/ChunkSection.h"
 
@@ -38,7 +44,9 @@ void RenderMaster::finishRender(sf::Window &window, const Camera &camera)
     m_chunkRenderer.render(camera);
     m_waterRenderer.render(camera);
     m_floraRenderer.render(camera);
-    m_entityRenderer.render(camera);
+    m_pigmanRenderer.render(camera);
+    m_spiderRenderer.render(camera);
+    m_projectileRenderer.render(camera);
 
     if (m_drawBox) {
         glDisable(GL_CULL_FACE);

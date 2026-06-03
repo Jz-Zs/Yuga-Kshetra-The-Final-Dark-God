@@ -90,6 +90,13 @@ void initCraftingRecipes()
         &Material::COBBLESTONE, nullptr,                &Material::COBBLESTONE,
         &Material::COBBLESTONE, &Material::COBBLESTONE, &Material::COBBLESTONE,
     }, &Material::FURNACE, 1});
+
+    // 3 Silk (left column) → 1 Silk Thread
+    g_recipes.push_back({{
+        &Material::SILK, nullptr, nullptr,
+        &Material::SILK, nullptr, nullptr,
+        &Material::SILK, nullptr, nullptr,
+    }, &Material::SILK_THREAD, 1});
 }
 
 const CraftingRecipe* findMatchingRecipe(const ItemStack grid[9])

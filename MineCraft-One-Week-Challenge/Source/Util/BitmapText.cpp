@@ -62,7 +62,8 @@ BitmapText::~BitmapText()
 }
 
 int BitmapText::renderUTF8(unsigned char* buf, int bufW, int bufH,
-                            int x, int y, const std::string& text)
+                            int x, int y, const std::string& text,
+                            unsigned char r, unsigned char g, unsigned char b)
 {
     auto* fi = (stbtt_fontinfo*)m_fontInfo;
     if (!fi) return 0;
@@ -98,9 +99,9 @@ int BitmapText::renderUTF8(unsigned char* buf, int bufW, int bufH,
                     unsigned char alpha = glyph[row * gw + col];
                     if (alpha == 0) continue;
                     int off = (py * bufW + px) * 4;
-                    buf[off+0] = 255;
-                    buf[off+1] = 255;
-                    buf[off+2] = 255;
+                    buf[off+0] = r;
+                    buf[off+1] = g;
+                    buf[off+2] = b;
                     buf[off+3] = (unsigned char)std::min(255, buf[off+3] + alpha);
                 }
             }
@@ -136,7 +137,8 @@ int BitmapText::measureTextWidth(const std::string& text)
 }
 
 GLuint BitmapText::update(const std::vector<std::string>& lines,
-                           int texWidth, int texHeight, bool center)
+                           int texWidth, int texHeight, bool center,
+                           unsigned char r, unsigned char g, unsigned char b)
 {
     if (!m_fontInfo) {
         // No font: return empty texture
@@ -159,8 +161,8 @@ GLuint BitmapText::update(const std::vector<std::string>& lines,
             x = (texWidth - lineW) / 2;
             if (x < 0) x = 0;
         }
-        renderUTF8(m_buffer.data(), texWidth, texHeight, x, y, line);
-        renderUTF8(m_buffer.data(), texWidth, texHeight, x + 1, y, line); // bold: +1px offset
+        renderUTF8(m_buffer.data(), texWidth, texHeight, x, y, line, r, g, b);
+        renderUTF8(m_buffer.data(), texWidth, texHeight, x + 1, y, line, r, g, b); // bold: +1px offset
         y += (int)(m_fontSize * 1.1f);
     }
 

@@ -6,6 +6,7 @@
 #include <iostream>
 
 #include "Entity/PigmanEntity.h"
+#include "Entity/SpiderEntity.h"
 #include "Maths/Ray.h"
 #include "Renderer/RenderMaster.h"
 #include "World/Block/BlockDatabase.h"
@@ -74,13 +75,14 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
         if (leftClicked && !m_player.m_isDead)
         {
             bool hitPigman = false;
+            bool hitSpider = false;
 
-            // Raycast for pigman
+            // Raycast for entities
             Ray ray({m_player.position.x, m_player.position.y + 0.6f, m_player.position.z},
                      m_player.rotation);
-            for (; ray.getLength() < 6; ray.step(0.05f))
+            for (; ray.getLength() < 5; ray.step(0.05f))
             {
-                // Check pigman first
+                // Check pigman
                 for (auto& e : m_world.getPigmen())
                 {
                     if (e.state == PigmanEntity::Dead) continue;
@@ -93,11 +95,9 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
                         rp.y >= eMin.y && rp.y <= eMax.y &&
                         rp.z >= eMin.z && rp.z <= eMax.z)
                     {
-                        // Hit!
                         int dmg = m_player.getAttackPower();
                         e.hp -= dmg;
 
-                        // Knockback
                         glm::vec3 kb = glm::normalize(e.position - m_player.position);
                         kb.y = 0;
                         if (glm::length(kb) < 0.01f) kb = glm::vec3(0, 0, -1);
@@ -110,7 +110,6 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
                             e.deathAnimTimer = 0.0f;
                             e.respawnTimer = 10.0f + (float)(std::rand() % 11);
 
-                            // Drops: 5x independent rolls
                             glm::vec3 dropPos(e.position.x, e.position.y + 0.75f, e.position.z);
                             auto pushDrop = [&](const Material& mat) {
                                 ItemDropEntity d;
@@ -135,15 +134,70 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
                         break;
                     }
                 }
-                if (hitPigman) break;
+
+                // Check spider
+                for (auto& e : m_world.getSpiders())
+                {
+                    if (e.state == SpiderEntity::Dead) continue;
+
+                    glm::vec3 eMin = e.box.position - e.box.dimensions;
+                    glm::vec3 eMax = e.box.position + e.box.dimensions;
+                    glm::vec3 rp = ray.getEnd();
+
+                    if (rp.x >= eMin.x && rp.x <= eMax.x &&
+                        rp.y >= eMin.y && rp.y <= eMax.y &&
+                        rp.z >= eMin.z && rp.z <= eMax.z)
+                    {
+                        int dmg = m_player.getAttackPower();
+                        e.hp -= dmg;
+
+                        glm::vec3 kb = glm::normalize(e.position - m_player.position);
+                        kb.y = 0;
+                        if (glm::length(kb) < 0.01f) kb = glm::vec3(0, 0, -1);
+                        e.velocity.x += kb.x * 6.0f;
+                        e.velocity.z += kb.z * 6.0f;
+
+                        if (e.hp <= 0) {
+                            e.hp = 0;
+                            e.state = SpiderEntity::Dead;
+                            e.deathAnimTimer = 0.0f;
+                            e.respawnTimer = 30.0f + (float)(std::rand() % 21);
+
+                            glm::vec3 dropPos(e.position.x, e.position.y + 0.75f, e.position.z);
+                            auto pushDrop = [&](const Material& mat) {
+                                ItemDropEntity d;
+                                d.position = dropPos;
+                                d.velocity = glm::vec3(0.0f);
+                                d.material = &mat;
+                                d.alive = true;
+                                m_world.getDropItems().push_back(d);
+                            };
+                            for (int r = 0; r < 5; r++) {
+                                if (std::rand() % 100 < 35) pushDrop(Material::RAW_MEAT);
+                                if (std::rand() % 100 < 50) pushDrop(Material::SILK);
+                                if (std::rand() % 100 < 20) pushDrop(Material::STICK);
+                                if (std::rand() % 100 < 15) pushDrop(Material::SILK_THREAD);
+                            }
+                            m_player.m_pigmanKills++;
+                        } else {
+                            e.state = SpiderEntity::Hurt;
+                            e.hurtTimer = 0.3f;
+                        }
+
+                        hitSpider = true;
+                        break;
+                    }
+                }
+
+                if (hitPigman || hitSpider) break;
             }
 
-            // If no pigman hit, try mining — start/reacquire target
-            if (!hitPigman)
+            // If no pigman or spider hit, try mining — start/reacquire target
+            if (!hitPigman && !hitSpider)
             {
                 for (Ray ray2({m_player.position.x, m_player.position.y + 0.6f, m_player.position.z},
                               m_player.rotation);
-                     ray2.getLength() < 6; ray2.step(0.05f))
+                     ray2.getLength() < 5; ray2.step(0.05f))
                 {
                     int x = static_cast<int>(ray2.getEnd().x);
                     int y = static_cast<int>(ray2.getEnd().y);
@@ -219,7 +273,7 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
                 m_player.m_miningTarget = {0, -999, 0};
                 for (Ray ray({m_player.position.x, m_player.position.y + 0.6f, m_player.position.z},
                              m_player.rotation);
-                     ray.getLength() < 6; ray.step(0.05f))
+                     ray.getLength() < 5; ray.step(0.05f))
                 {
                     int x = static_cast<int>(ray.getEnd().x);
                     int y = static_cast<int>(ray.getEnd().y);
@@ -299,6 +353,9 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
 
     // Update entities (pigman AI + physics)
     m_world.updateEntities(delta, m_player);
+
+    // Sync dynamic difficulty state to player for timer color
+    m_player.m_difficultyActive = m_world.isDifficultyActive();
 
     m_world.update(m_camera, delta);
 
@@ -411,9 +468,43 @@ void Application::on_render(bool show_debug_info)
 
     m_world.renderWorld(m_masterRenderer, m_camera);
 
-    // Add entities to renderer
+    // Add pigman entities to renderer
     for (auto& e : m_world.getPigmen()) {
-        m_masterRenderer.m_entityRenderer.addEntity(e);
+        EntityRenderData rd;
+        rd.position = e.position;
+        rd.rotation = e.rotation;
+        rd.state = (int)e.state;
+        rd.animTimer = e.stateTimer;
+        rd.deathAnimTimer = e.deathAnimTimer;
+        rd.attackCooldown = e.attackCooldown;
+        rd.isHurt = (e.state == PigmanEntity::Hurt);
+        m_masterRenderer.m_pigmanRenderer.addEntity(rd);
+    }
+
+    // Add spiders to renderer
+    // Spider state mapping: Patrol=0→0, Chase=1→1, MeleeAttack=2→2(Attack),
+    //   Hurt=3→3(Hurt), Dead=4→4(Dead)
+    for (auto& e : m_world.getSpiders()) {
+        EntityRenderData rd;
+        rd.position = e.position;
+        rd.rotation = e.rotation;
+        int rawState = (int)e.state;
+        if (rawState == 2) rawState = 2; // MeleeAttack → Attack (already 2)
+        else if (rawState == 3) rawState = 3; // Hurt
+        else if (rawState == 4) rawState = 4; // Dead
+        rd.state = rawState;
+        rd.animTimer = e.stateTimer;
+        rd.deathAnimTimer = e.deathAnimTimer;
+        rd.attackCooldown = e.meleeCooldown;
+        rd.isHurt = (e.state == SpiderEntity::Hurt);
+        rd.scale = 0.1f;
+        rd.rotationYOffset = 90.0f;
+        m_masterRenderer.m_spiderRenderer.addEntity(rd);
+    }
+
+    // Add projectiles to renderer
+    for (auto& p : m_world.getProjectiles()) {
+        m_masterRenderer.m_projectileRenderer.addProjectile(p);
     }
 
     m_masterRenderer.finishRender(m_window, m_camera);

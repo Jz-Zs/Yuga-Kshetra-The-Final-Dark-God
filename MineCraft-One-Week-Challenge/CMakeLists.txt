@@ -70,6 +70,8 @@ add_executable(${PROJECT_NAME}
     Source/Renderer/FloraRenderer.cpp
     Source/Renderer/EntityRenderer.cpp
     Source/Entity/PigmanAI.cpp
+    Source/Entity/SpiderAI.cpp
+    Source/Renderer/ProjectileRenderer.cpp
     Source/Model.cpp
     Source/Util/Profiler.cpp
     Source/GUI.cpp
