@@ -54,6 +54,7 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
         m_paused = !m_paused;
         if (m_paused) {
             m_music.pause();
+            m_window.setMouseCursorGrabbed(false);
         } else {
             if (m_music.getStatus() == sf::Music::Status::Paused)
                 m_music.play();
