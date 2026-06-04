@@ -74,8 +74,6 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
     }
 
     m_player.handleInput(m_window, keyboard);
-    glm::vec3 lastPosition;
-
     bool leftPressed = sf::Mouse::isButtonPressed(sf::Mouse::Button::Left);
     bool leftClicked = !m_prevLeftPressed && leftPressed;
     m_prevLeftPressed = leftPressed;
@@ -140,16 +138,25 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
 
         // --- Left-click: pigman attack first, then mining ---
         bool bowBlocksCombat = (bowEquipped && m_player.m_bowCharging);
+        bool hitPigman = false;
+        bool hitSpider = false;
+
         if (!bowBlocksCombat && leftClicked && !m_player.m_isDead)
         {
-            bool hitPigman = false;
-            bool hitSpider = false;
 
-            // Raycast for entities
-            Ray ray({m_player.position.x, m_player.position.y + 0.6f, m_player.position.z},
-                     m_player.rotation);
-            for (; ray.getLength() < 5; ray.step(0.05f))
+            // Raycast for entities (inline point-sampling, no Ray dependency)
+            glm::vec3 eyePos(m_player.position.x, m_player.position.y + 0.6f, m_player.position.z);
+            float yr = glm::radians(m_player.rotation.y);
+            float pr = glm::radians(m_player.rotation.x);
+            float cp = glm::cos(pr);
+            glm::vec3 dir(
+                 glm::sin(yr) * cp,
+                -glm::sin(pr),
+                -glm::cos(yr) * cp
+            );
+            for (float dist = 0.0f; dist < 5.0f; dist += 0.05f)
             {
+                glm::vec3 rp = eyePos + dir * dist;
                 // Check pigman
                 for (auto& e : m_world.getPigmen())
                 {
@@ -157,8 +164,6 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
 
                     glm::vec3 eMin = e.box.position - e.box.dimensions;
                     glm::vec3 eMax = e.box.position + e.box.dimensions;
-                    glm::vec3 rp = ray.getEnd();
-
                     if (rp.x >= eMin.x && rp.x <= eMax.x &&
                         rp.y >= eMin.y && rp.y <= eMax.y &&
                         rp.z >= eMin.z && rp.z <= eMax.z)
@@ -210,8 +215,6 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
 
                     glm::vec3 eMin = e.box.position - e.box.dimensions;
                     glm::vec3 eMax = e.box.position + e.box.dimensions;
-                    glm::vec3 rp = ray.getEnd();
-
                     if (rp.x >= eMin.x && rp.x <= eMax.x &&
                         rp.y >= eMin.y && rp.y <= eMax.y &&
                         rp.z >= eMin.z && rp.z <= eMax.z)
@@ -260,116 +263,52 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
                 if (hitPigman || hitSpider) break;
             }
 
-            // If no pigman or spider hit, try mining — start/reacquire target
-            if (!hitPigman && !hitSpider)
-            {
-                for (Ray ray2({m_player.position.x, m_player.position.y + 0.6f, m_player.position.z},
-                              m_player.rotation);
-                     ray2.getLength() < 5; ray2.step(0.05f))
-                {
-                    int x = static_cast<int>(ray2.getEnd().x);
-                    int y = static_cast<int>(ray2.getEnd().y);
-                    int z = static_cast<int>(ray2.getEnd().z);
-
-                    auto block = m_world.getBlock(x, y, z);
-                    auto id = (BlockId)block.id;
-                    auto& data = block.getData();
-
-                    // Unbreakable blocks stop the ray (barrier)
-                    if (data.requiredToolLevel == 255) {
-                        break;
-                    }
-
-                    if (id != BlockId::Air && id != BlockId::Water)
-                    {
-                        // Check tool tier requirement
-                        const auto& eqMBlock = m_player.m_equipment[m_player.m_equipSlot].getMaterial();
-                        if (data.requiredToolLevel > 0 && eqMBlock.toolTier < data.requiredToolLevel)
-                        {
-                            break; // Insufficient tool — ray blocked
-                        }
-
-                        if (!m_player.m_isMining
-                            || m_player.m_miningTarget.x != x
-                            || m_player.m_miningTarget.y != y
-                            || m_player.m_miningTarget.z != z)
-                        {
-                            m_player.m_isMining = true;
-                            m_player.m_miningProgress = 0.0f;
-                            m_player.m_miningTarget = {x, y, z};
-                        }
-                        break;
-                    }
-                }
-            }
         }
 
-        // Mining progress — only while holding left button
-        if (leftPressed && m_player.m_isMining && m_player.m_miningProgress < 1.0f)
+        // --- Mining target selection: DDA raycast every frame while leftPressed ---
+        // (skip if we just hit an entity on this click frame)
+        bool entityBlocked = leftClicked && (hitPigman || hitSpider);
+        glm::vec3 eyePos(m_player.position.x, m_player.position.y + 0.6f, m_player.position.z);
+        if (leftPressed && !entityBlocked && !m_player.m_isDead)
         {
-            // Get target block properties for mining speed
-            auto targetBlock = m_world.getBlock(
-                m_player.m_miningTarget.x,
-                m_player.m_miningTarget.y,
-                m_player.m_miningTarget.z);
-            auto& targetData = targetBlock.getData();
+            Ray ray(eyePos, m_player.rotation);
+            glm::ivec3 foundTarget{0, -999, 0};
+            bool found = false;
+            while (ray.getLength() < 5.0f) {
+                if (!ray.advance()) break;
+                auto voxel = ray.currentVoxel();
+                auto block = m_world.getBlock(voxel.x, voxel.y, voxel.z);
+                auto& data = block.getData();
 
-            // Calculate mining speed based on tool match
-            const auto& eqM = m_player.m_equipment[m_player.m_equipSlot].getMaterial();
-            float multiplier = 1.0f;
-            // Tool bonus only applies when block requires a specific tool class AND equipped tool matches
-            if (targetData.requiredToolClass != 0
-                && eqM.toolClass == targetData.requiredToolClass)
-            {
-                multiplier = eqM.miningMultiplier;
-            }
-            float digTime = targetData.hardness * 0.3f / multiplier;
-            m_player.m_miningProgress += delta / digTime;
+                if (data.requiredToolLevel == 255)
+                    break; // unbreakable barrier
 
-
-            if (m_player.m_miningProgress >= 1.0f)
-            {
-                // Dig current block
-                m_world.addEvent<PlayerDigEvent>(sf::Mouse::Button::Left,
-                    glm::vec3(m_player.m_miningTarget.x + 0.5f,
-                              m_player.m_miningTarget.y + 0.5f,
-                              m_player.m_miningTarget.z + 0.5f), m_player);
-                // Continuous mining: raycast for next block, skip the one just dug
-                glm::ivec3 prevTarget = m_player.m_miningTarget;
-                m_player.m_miningProgress = 0.0f;
-                m_player.m_isMining = false;
-                m_player.m_miningTarget = {0, -999, 0};
-                for (Ray ray({m_player.position.x, m_player.position.y + 0.6f, m_player.position.z},
-                             m_player.rotation);
-                     ray.getLength() < 5; ray.step(0.05f))
-                {
-                    int x = static_cast<int>(ray.getEnd().x);
-                    int y = static_cast<int>(ray.getEnd().y);
-                    int z = static_cast<int>(ray.getEnd().z);
-                    if (x == prevTarget.x && y == prevTarget.y && z == prevTarget.z) continue;
-                    auto block = m_world.getBlock(x, y, z);
-                    auto id = (BlockId)block.id;
-                    auto& data = block.getData();
-
-                    // Unbreakable blocks stop the ray (barrier)
-                    if (data.requiredToolLevel == 255) {
-                        break;
-                    }
-
-                    if (id != BlockId::Air && id != BlockId::Water)
-                    {
-                        // Check tool tier requirement
-                        const auto& eqMBlock = m_player.m_equipment[m_player.m_equipSlot].getMaterial();
-                        if (data.requiredToolLevel > 0 && eqMBlock.toolTier < data.requiredToolLevel)
-                        {
-                            break; // Insufficient tool — ray blocked
-                        }
-
-                        m_player.m_isMining = true;
-                        m_player.m_miningTarget = {x, y, z};
-                        break;
-                    }
+                if (block.id != 0 && block.id != (int)BlockId::Water) {
+                    const auto& eqMBlock = m_player.m_equipment[m_player.m_equipSlot].getMaterial();
+                    if (data.requiredToolLevel > 0 && eqMBlock.toolTier < data.requiredToolLevel)
+                        break; // insufficient tool
+                    foundTarget = voxel;
+                    found = true;
+                    break;
                 }
+            }
+
+            if (found) {
+                if (!m_player.m_isMining
+                    || m_player.m_miningTarget.x != foundTarget.x
+                    || m_player.m_miningTarget.y != foundTarget.y
+                    || m_player.m_miningTarget.z != foundTarget.z)
+                {
+                    // Crosshair moved to a different block — reset progress
+                    m_player.m_miningProgress = 0.0f;
+                    m_player.m_miningTarget = foundTarget;
+                }
+                m_player.m_isMining = true;
+            } else {
+                // No block under crosshair — cancel mining
+                m_player.m_isMining = false;
+                m_player.m_miningProgress = 0.0f;
+                m_player.m_miningTarget = {0, -999, 0};
             }
         }
         else if (!leftPressed && m_player.m_isMining)
@@ -380,38 +319,95 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
             m_player.m_miningTarget = {0, -999, 0};
         }
 
+        // --- Mining progress accumulation ---
+        if (leftPressed && m_player.m_isMining && m_player.m_miningProgress < 1.0f)
+        {
+            auto targetBlock = m_world.getBlock(
+                m_player.m_miningTarget.x,
+                m_player.m_miningTarget.y,
+                m_player.m_miningTarget.z);
+            auto& targetData = targetBlock.getData();
+
+            const auto& eqM = m_player.m_equipment[m_player.m_equipSlot].getMaterial();
+            float multiplier = 1.0f;
+            if (targetData.requiredToolClass != 0
+                && eqM.toolClass == targetData.requiredToolClass)
+            {
+                multiplier = eqM.miningMultiplier;
+            }
+            float digTime = targetData.hardness * 2.0f / multiplier;
+            m_player.m_miningProgress += delta / digTime;
+
+            if (m_player.m_miningProgress >= 1.0f)
+            {
+                m_world.addEvent<PlayerDigEvent>(sf::Mouse::Button::Left,
+                    glm::vec3(m_player.m_miningTarget.x + 0.5f,
+                              m_player.m_miningTarget.y + 0.5f,
+                              m_player.m_miningTarget.z + 0.5f), m_player);
+
+                // Continuous mining: DDA raycast to find next block behind the dug one
+                glm::ivec3 prevTarget = m_player.m_miningTarget;
+                m_player.m_miningProgress = 0.0f;
+                m_player.m_isMining = false;
+                m_player.m_miningTarget = {0, -999, 0};
+
+                Ray ray(eyePos, m_player.rotation);
+                while (ray.getLength() < 5.0f) {
+                    if (!ray.advance()) break;
+                    auto voxel = ray.currentVoxel();
+                    if (voxel.x == prevTarget.x && voxel.y == prevTarget.y && voxel.z == prevTarget.z)
+                        continue;
+                    auto block = m_world.getBlock(voxel.x, voxel.y, voxel.z);
+                    auto& data = block.getData();
+
+                    if (data.requiredToolLevel == 255)
+                        break;
+
+                    if (block.id != 0 && block.id != (int)BlockId::Water) {
+                        const auto& eqMBlock = m_player.m_equipment[m_player.m_equipSlot].getMaterial();
+                        if (data.requiredToolLevel > 0 && eqMBlock.toolTier < data.requiredToolLevel)
+                            break;
+                        m_player.m_isMining = true;
+                        m_player.m_miningTarget = voxel;
+                        break;
+                    }
+                }
+            }
+        }
+
         // Eating: update progress when holding right-click on food
         m_player.updateEating(delta, rightPressed);
 
         // Right-click: place block (skip if eating)
         if (rightPressed && m_rightClickTimer.getElapsedTime().asSeconds() > 0.2f && !m_player.isEating())
         {
-            for (Ray ray({m_player.position.x, m_player.position.y + 0.6f, m_player.position.z},
-                         m_player.rotation);
-                 ray.getLength() < 6; ray.step(0.05f))
-            {
-                int x = static_cast<int>(ray.getEnd().x);
-                int y = static_cast<int>(ray.getEnd().y);
-                int z = static_cast<int>(ray.getEnd().z);
-                auto block = m_world.getBlock(x, y, z);
+            Ray ray(eyePos, m_player.rotation);
+            glm::ivec3 prevVoxel = ray.currentVoxel();
+            while (ray.getLength() < 6.0f) {
+                if (!ray.advance()) break;
+                auto voxel = ray.currentVoxel();
+                auto block = m_world.getBlock(voxel.x, voxel.y, voxel.z);
                 auto& data = block.getData();
-                // Unbreakable blocks stop placement ray
-                if (data.requiredToolLevel == 255) {
+
+                if (data.requiredToolLevel == 255)
                     break;
-                }
+
                 if (block.id != 0 && block.id != (int)BlockId::Water)
                 {
-                    // 右键熔炉→打开UI（无UI打开时才触发）
                     if (block.id == (int)BlockId::Furnace && !m_player.isUIOpen()) {
                         m_player.m_furnaceUIOpen = true;
                         m_rightClickTimer.restart();
                         break;
                     }
                     m_rightClickTimer.restart();
-                    m_world.addEvent<PlayerDigEvent>(sf::Mouse::Button::Right, lastPosition, m_player);
+                    glm::vec3 placePos(
+                        prevVoxel.x + 0.5f,
+                        prevVoxel.y + 0.5f,
+                        prevVoxel.z + 0.5f);
+                    m_world.addEvent<PlayerDigEvent>(sf::Mouse::Button::Right, placePos, m_player);
                     break;
                 }
-                lastPosition = ray.getEnd();
+                prevVoxel = voxel;
             }
         }
     }
@@ -475,8 +471,8 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
             m_player.m_settlementOutcome = Player::SettlementOutcome::TimeUp;
             m_player.clearInventory();
         }
-        // Spawn extraction point at round start (was 300s for 5-min delay)
-        if (m_player.m_roundTimeLeft <= 600.0f && !m_extractionSpawned && !m_world.isExtractionActive()) {
+        // Spawn extraction point 5 minutes into the round
+        if (m_player.m_roundTimeLeft <= 300.0f && !m_extractionSpawned && !m_world.isExtractionActive()) {
             m_world.placeExtractionPoint();
             m_extractionSpawned = true;
         }
@@ -529,7 +525,7 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
     if (m_player.position.y < 0) { m_player.position.y = 1; }
 }
 
-void Application::on_render(bool /*show_debug_info*/)
+void Application::on_render()
 {
     m_player.setDropItems(&m_world.getDropItems());
     m_player.m_paused = m_paused;
