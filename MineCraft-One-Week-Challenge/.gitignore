@@ -22,3 +22,27 @@ Release/
 vcpkg_installed/
 
 minecraft-one-week-challenge/
+
+# IDE / Editor
+.claude/
+.superpowers/
+.vs/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# Runtime generated
+imgui.ini
+
+# Build output
+out/
+build2/
+
+# Distribution package
+YugaKshetra_发布版/
+
+# Personal documents
+*.docx
+实验报告.txt
+游戏指南.txt
