@@ -172,7 +172,7 @@ int main()
 
 namespace
 {
-    void handle_event(const sf::Event& event, sf::Window& window, bool& show_debug_info,
+    void handle_event(const sf::Event& event, sf::Window& /*window*/, bool& show_debug_info,
                       bool& close_requested)
     {
         if (event.is<sf::Event::Closed>())

@@ -15,6 +15,48 @@
 #include <imgui.h>
 #include "../World/Block/BlockDatabase.h"
 
+namespace {
+    const char* getMaterialCNName(Material::ID id) {
+        switch (id) {
+            case Material::ID::Nothing:       return "空";
+            case Material::ID::Grass:         return "草方块";
+            case Material::ID::Dirt:          return "泥土";
+            case Material::ID::Stone:         return "石材";
+            case Material::ID::OakBark:       return "木材";
+            case Material::ID::OakLeaf:       return "树叶";
+            case Material::ID::Sand:          return "沙子";
+            case Material::ID::Cactus:        return "仙人掌";
+            case Material::ID::Rose:          return "玫瑰";
+            case Material::ID::TallGrass:     return "草";
+            case Material::ID::DeadShrub:     return "枯木";
+            case Material::ID::Stick:         return "木棍";
+            case Material::ID::WoodenSword:   return "木剑";
+            case Material::ID::RawMeat:       return "生肉";
+            case Material::ID::GoldBlock:     return "金块";
+            case Material::ID::Cobblestone:   return "圆石";
+            case Material::ID::IronOre:       return "铁矿";
+            case Material::ID::IronIngot:     return "铁锭";
+            case Material::ID::WildFruit:     return "野果";
+            case Material::ID::StoneArrow:    return "石箭矢";
+            case Material::ID::WoodenPickaxe: return "木镐";
+            case Material::ID::StonePickaxe:  return "石镐";
+            case Material::ID::IronPickaxe:   return "铁镐";
+            case Material::ID::WoodenAxe:     return "木斧";
+            case Material::ID::StoneAxe:      return "石斧";
+            case Material::ID::IronAxe:       return "铁斧";
+            case Material::ID::IronSword:     return "铁剑";
+            case Material::ID::CookedMeat:    return "熟肉";
+            case Material::ID::Furnace:       return "熔炉";
+            case Material::ID::Silk:          return "蛛丝";
+            case Material::ID::SilkThread:    return "丝线";
+            case Material::ID::Bow:           return "弓";
+            case Material::ID::IronArrow:     return "铁箭";
+            case Material::ID::SpiderSilkArrow: return "蛛丝箭";
+            default: return "未知";
+        }
+    }
+}
+
 Player::Player()
     : Entity({64, 33, 64}, {0.f, 0.f, 0.f}, {0.3f, 1.f, 0.3f})
     , m_itemDown(sf::Keyboard::Key::Down)
@@ -167,7 +209,7 @@ void Player::handleInput(sf::Window& window, const Keyboard& keyboard)
         m_heldItem--;
         if (m_heldItem == -1)
         {
-            m_heldItem = m_items.size() - 1;
+            m_heldItem = static_cast<int>(m_items.size()) - 1;
         }
     }
 
@@ -269,11 +311,11 @@ void Player::update(float dt, World& world)
     }
 }
 
-void Player::collide(World& world, const glm::vec3& vel, float dt)
+void Player::collide(World& world, const glm::vec3& vel, float /*dt*/)
 {
-    for (int x = position.x - box.dimensions.x; x < position.x + box.dimensions.x; x++)
-        for (int y = position.y - box.dimensions.y; y < position.y + 0.7; y++)
-            for (int z = position.z - box.dimensions.z; z < position.z + box.dimensions.z; z++)
+    for (int x = static_cast<int>(position.x - box.dimensions.x); x < position.x + box.dimensions.x; x++)
+        for (int y = static_cast<int>(position.y - box.dimensions.y); y < position.y + 0.7; y++)
+            for (int z = static_cast<int>(position.z - box.dimensions.z); z < position.z + box.dimensions.z; z++)
             {
                 auto block = world.getBlock(x, y, z);
 
@@ -888,53 +930,13 @@ void Player::drawFurnaceUI()
     ImGui::PopStyleVar();
 }
 
-void Player::drawSettlement(const Camera* camera)
+void Player::drawSettlement(const Camera* /*camera*/)
 {
     // Trigger: round ended OR player dead
     bool shouldShow = (!m_roundActive && m_roundNumber > 0) || m_isDead;
     if (!shouldShow) return;
 
     auto displaySize = ImGui::GetIO().DisplaySize;
-
-    // ================================================================
-    // Chinese name mapping for Material IDs
-    // ================================================================
-    auto cnName = [](Material::ID id) -> std::string {
-        switch (id) {
-            case Material::ID::Nothing:    return "空";
-            case Material::ID::Grass:      return "草方块";
-            case Material::ID::Dirt:       return "泥土";
-            case Material::ID::Stone:      return "石材";
-            case Material::ID::OakBark:    return "木材";
-            case Material::ID::OakLeaf:    return "树叶";
-            case Material::ID::Sand:       return "沙子";
-            case Material::ID::Cactus:     return "仙人掌";
-            case Material::ID::Rose:       return "玫瑰";
-            case Material::ID::TallGrass:  return "草";
-            case Material::ID::DeadShrub:  return "枯木";
-            case Material::ID::Stick:      return "木棍";
-            case Material::ID::WoodenSword:return "木剑";
-            case Material::ID::RawMeat:    return "生肉";
-            case Material::ID::GoldBlock:    return "金块";
-            case Material::ID::Cobblestone:   return "圆石";
-            case Material::ID::IronOre:       return "铁矿";
-            case Material::ID::IronIngot:     return "铁锭";
-            case Material::ID::WildFruit:     return "野果";
-            case Material::ID::StoneArrow:    return "石箭矢";
-            case Material::ID::WoodenPickaxe: return "木镐";
-            case Material::ID::StonePickaxe:  return "石镐";
-            case Material::ID::IronPickaxe:   return "铁镐";
-            case Material::ID::WoodenAxe:     return "木斧";
-            case Material::ID::StoneAxe:      return "石斧";
-            case Material::ID::IronAxe:       return "铁斧";
-            case Material::ID::IronSword:     return "铁剑";
-            case Material::ID::CookedMeat:  return "熟肉";
-            case Material::ID::Furnace:     return "熔炉";
-            case Material::ID::Silk:        return "蛛丝";
-            case Material::ID::SilkThread:  return "丝线";
-            default: return "未知";
-        }
-    };
 
     // ================================================================
     // Prepare summary text
@@ -973,7 +975,7 @@ void Player::drawSettlement(const Camera* camera)
     for (auto& [matId, count] : m_roundCollection) {
         if (count > 0) {
             char buf[64];
-            snprintf(buf, sizeof(buf), "  %s  x%d", cnName(matId).c_str(), count);
+            snprintf(buf, sizeof(buf), "  %s  x%d", getMaterialCNName(matId), count);
             detailLines.push_back(buf);
         }
     }
@@ -1077,45 +1079,8 @@ void Player::drawSettlement(const Camera* camera)
     ImGui::PopStyleVar();
 }
 
-void Player::draw(RenderMaster& master, const Camera* camera)
+void Player::draw(RenderMaster& /*master*/, const Camera* camera)
 {
-    // --- Chinese material names (kept for future text-based UI) ---
-    auto cnName = [](Material::ID id) -> std::string {
-        switch (id) {
-            case Material::ID::Nothing:    return "空";
-            case Material::ID::Grass:      return "草方块";
-            case Material::ID::Dirt:       return "泥土";
-            case Material::ID::Stone:      return "石材";
-            case Material::ID::OakBark:    return "木材";
-            case Material::ID::OakLeaf:    return "树叶";
-            case Material::ID::Sand:       return "沙子";
-            case Material::ID::Cactus:     return "仙人掌";
-            case Material::ID::Rose:       return "玫瑰";
-            case Material::ID::TallGrass:  return "草";
-            case Material::ID::DeadShrub:  return "枯木";
-            case Material::ID::Stick:      return "木棍";
-            case Material::ID::WoodenSword:return "木剑";
-            case Material::ID::RawMeat:    return "生肉";
-            case Material::ID::GoldBlock:  return "金块";
-            case Material::ID::Cobblestone:   return "圆石";
-            case Material::ID::IronOre:       return "铁矿";
-            case Material::ID::IronIngot:     return "铁锭";
-            case Material::ID::WildFruit:     return "野果";
-            case Material::ID::StoneArrow:    return "石箭矢";
-            case Material::ID::WoodenPickaxe: return "木镐";
-            case Material::ID::StonePickaxe:  return "石镐";
-            case Material::ID::IronPickaxe:   return "铁镐";
-            case Material::ID::WoodenAxe:     return "木斧";
-            case Material::ID::StoneAxe:      return "石斧";
-            case Material::ID::IronAxe:       return "铁斧";
-            case Material::ID::IronSword:     return "铁剑";
-            case Material::ID::CookedMeat:  return "熟肉";
-            case Material::ID::Furnace:     return "熔炉";
-            case Material::ID::Silk:        return "蛛丝";
-            case Material::ID::SilkThread:  return "丝线";
-            default: return "未知";
-        }
-    };
 
     auto& atlas = BlockDatabase::get().textureAtlas;
     GLuint atlasID = atlas.getID();
@@ -1575,37 +1540,9 @@ void Player::draw(RenderMaster& master, const Camera* camera)
         } else {
             auto& io = ImGui::GetIO();
 
-            // cnName helper
-            auto cnName = [](Material::ID id) -> std::string {
-                switch (id) {
-                    case Material::ID::Stone: return "石材";
-                    case Material::ID::Dirt: return "泥土";
-                    case Material::ID::Grass: return "草方块";
-                    case Material::ID::OakBark: return "木材";
-                    case Material::ID::OakLeaf: return "树叶";
-                    case Material::ID::Sand: return "沙子";
-                    case Material::ID::Stick: return "木棍";
-                    case Material::ID::WoodenSword: return "木剑";
-                    case Material::ID::RawMeat: return "生肉";
-                    case Material::ID::GoldBlock: return "金块";
-                    case Material::ID::Cobblestone: return "圆石";
-                    case Material::ID::IronOre: return "铁矿";
-                    case Material::ID::IronIngot: return "铁锭";
-                    case Material::ID::WildFruit: return "野果";
-                    case Material::ID::StoneArrow: return "石箭矢";
-                    case Material::ID::WoodenPickaxe: return "木镐";
-                    case Material::ID::StonePickaxe: return "石镐";
-                    case Material::ID::IronPickaxe: return "铁镐";
-                    case Material::ID::WoodenAxe: return "木斧";
-                    case Material::ID::StoneAxe: return "石斧";
-                    case Material::ID::IronAxe: return "铁斧";
-                    case Material::ID::IronSword: return "铁剑";
-                    default: return "物品";
-                }
-            };
             char qbuf[128];
             snprintf(qbuf, sizeof(qbuf), "丢弃 %s x%d？",
-                     cnName(dm.id).c_str(), m_items[m_discardPending].getNumInStack());
+                     getMaterialCNName(dm.id), m_items[m_discardPending].getNumInStack());
 
             // Measure text widths for precise button placement
             std::string btnLine = "[确认]        [取消]";

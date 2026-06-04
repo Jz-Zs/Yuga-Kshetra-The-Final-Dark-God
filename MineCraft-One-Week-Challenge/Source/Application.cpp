@@ -40,6 +40,9 @@ Application::Application(sf::Window& window, const Config& config)
 
 void Application::on_event(const sf::Event& event)
 {
+    if (const auto* resized = event.getIf<sf::Event::Resized>()) {
+        m_camera.updateProjection(resized->size.x, resized->size.y);
+    }
 }
 
 void Application::on_update(const Keyboard& keyboard, sf::Time dt)
@@ -280,8 +283,8 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
                     if (id != BlockId::Air && id != BlockId::Water)
                     {
                         // Check tool tier requirement
-                        const auto& eqM = m_player.m_equipment[m_player.m_equipSlot].getMaterial();
-                        if (data.requiredToolLevel > 0 && eqM.toolTier < data.requiredToolLevel)
+                        const auto& eqMBlock = m_player.m_equipment[m_player.m_equipSlot].getMaterial();
+                        if (data.requiredToolLevel > 0 && eqMBlock.toolTier < data.requiredToolLevel)
                         {
                             break; // Insufficient tool — ray blocked
                         }
@@ -356,8 +359,8 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
                     if (id != BlockId::Air && id != BlockId::Water)
                     {
                         // Check tool tier requirement
-                        const auto& eqM = m_player.m_equipment[m_player.m_equipSlot].getMaterial();
-                        if (data.requiredToolLevel > 0 && eqM.toolTier < data.requiredToolLevel)
+                        const auto& eqMBlock = m_player.m_equipment[m_player.m_equipSlot].getMaterial();
+                        if (data.requiredToolLevel > 0 && eqMBlock.toolTier < data.requiredToolLevel)
                         {
                             break; // Insufficient tool — ray blocked
                         }
@@ -526,7 +529,7 @@ void Application::on_update(const Keyboard& keyboard, sf::Time dt)
     if (m_player.position.y < 0) { m_player.position.y = 1; }
 }
 
-void Application::on_render(bool show_debug_info)
+void Application::on_render(bool /*show_debug_info*/)
 {
     m_player.setDropItems(&m_world.getDropItems());
     m_player.m_paused = m_paused;

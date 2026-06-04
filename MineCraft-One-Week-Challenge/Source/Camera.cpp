@@ -21,6 +21,13 @@ void Camera::update() noexcept
     m_frustum.update(m_projViewMatrx);
 }
 
+void Camera::updateProjection(int width, int height) noexcept
+{
+    m_config.windowX = width;
+    m_config.windowY = height;
+    m_projectionMatrix = makeProjectionMatrix(m_config);
+}
+
 void Camera::hookEntity(const Entity &entity) noexcept
 {
     m_pEntity = &entity;

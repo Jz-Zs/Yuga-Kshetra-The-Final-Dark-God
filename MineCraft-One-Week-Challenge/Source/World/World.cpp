@@ -36,7 +36,7 @@ World::~World()
     }
 }
 
-void World::resetWorld(const Camera &camera, Player &player)
+void World::resetWorld(const Camera& /*camera*/, Player &player)
 {
     // 1. Clear entities
     m_dropItems.clear();
@@ -94,7 +94,7 @@ void World::setBlock(int x, int y, int z, ChunkBlock block)
 
 // loads chunks
 // make chunk meshes
-void World::update(const Camera &camera, float dt)
+void World::update(const Camera& /*camera*/, float dt)
 {
     static ToggleKey key(sf::Keyboard::Key::C);
 
@@ -212,8 +212,8 @@ void World::renderWorld(RenderMaster &renderer, const Camera &camera)
     for (auto itr = chunkMap.begin(); itr != chunkMap.end();) {
         Chunk &chunk = itr->second;
 
-        int cameraX = camera.position.x;
-        int cameraZ = camera.position.z;
+        int cameraX = static_cast<int>(camera.position.x);
+        int cameraZ = static_cast<int>(camera.position.z);
 
         int minX = (cameraX / CHUNK_SIZE) - m_renderDistance;
         int minZ = (cameraZ / CHUNK_SIZE) - m_renderDistance;

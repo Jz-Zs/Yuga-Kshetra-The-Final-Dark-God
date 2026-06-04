@@ -35,8 +35,11 @@ void RenderMaster::drawSky()
     m_drawBox = true;
 }
 
-void RenderMaster::finishRender(sf::Window &window, const Camera &camera)
+void RenderMaster::finishRender(sf::Window& window, const Camera &camera)
 {
+    auto size = window.getSize();
+    glViewport(0, 0, size.x, size.y);
+
    // glClearColor(0.0, 0.0, 0.0, 1.0);
     glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 

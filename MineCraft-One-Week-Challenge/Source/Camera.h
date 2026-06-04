@@ -11,6 +11,7 @@ class Camera : public Entity {
     Camera(const Config &config) noexcept;
 
     void update() noexcept;
+    void updateProjection(int width, int height) noexcept;
     void hookEntity(const Entity &entity) noexcept;
 
     const glm::mat4 &getViewMatrix() const noexcept;
